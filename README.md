@@ -79,6 +79,7 @@
 │
 ├── 📁 utils/                           # Утилиты
 │   ├── 📄 dateHelper.js                # Помощники для работы с датами
+│   ├── 📄 debug-universal.js           # Диагностика API 
 │   ├── 📄 apiHelper.js                 # Помощники для API запросов
 │   ├── 📄 dbHelper.js                  # Помощники для БД
 │   └── 📄 validator.js                 # Валидаторы данных
