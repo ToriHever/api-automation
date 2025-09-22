@@ -1,0 +1,65 @@
+{
+  "name": "api-automation",
+  "version": "2.0.0",
+  "description": "Система автоматизации сбора данных из различных API сервисов",
+  "main": "scripts/run-service.js",
+  "scripts": {
+    "start": "node scripts/run-service.js",
+    "collect:all": "node scripts/run-service.js",
+    "collect:topvisor": "node scripts/run-service.js topvisor",
+    "collect:wordstat": "node scripts/run-service.js wordstat",
+    "collect:clarity": "node scripts/run-service.js clarity",
+    "collect:ga4": "node scripts/run-service.js ga4",
+    "collect:gsc": "node scripts/run-service.js gsc",
+    "collect:yandex-metrika": "node scripts/run-service.js yandex-metrika",
+    "test": "node tests/test-connections.js",
+    "test:connections": "node tests/test-connections.js",
+    "test:notifications": "node tests/test-notifications.js",
+    "health-check": "node scripts/health-check.js",
+    "daily-report": "node scripts/send-daily-report.js",
+    "migrate": "node scripts/migrate-db.js",
+    "dashboard": "node monitoring/dashboard.js",
+    "setup": "npm install && node scripts/setup.js",
+    "logs:tail": "tail -f logs/system/daily_$(date +%Y%m%d).log",
+    "logs:errors": "tail -f logs/errors/error_$(date +%Y%m%d).log",
+    "logs:cron": "tail -f logs/system/cron.log",
+    "dev": "NODE_ENV=development node scripts/run-service.js",
+    "force": "FORCE_OVERRIDE=true node scripts/run-service.js",
+    "manual": "MANUAL_MODE=true node scripts/run-service.js"
+  },
+  "keywords": [
+    "api",
+    "automation",
+    "data-collection",
+    "topvisor",
+    "analytics",
+    "postgresql"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.0",
+    "joi": "^17.11.0",
+    "node-cron": "^3.0.2",
+    "pg": "^8.11.0",
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^4.7.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/api-automation.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/api-automation/issues"
+  },
+  "homepage": "https://github.com/yourusername/api-automation#readme"
+}

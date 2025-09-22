@@ -1,0 +1,8 @@
+{
+  "name": "TopVisor",
+  "description": "Сбор позиций и данных ранжирования",
+  "timeout": 30000,
+  "retries": 3,
+  "batchSize": 4,
+  "delayBetweenRequests": 5000
+}
