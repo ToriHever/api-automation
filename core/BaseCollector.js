@@ -36,6 +36,9 @@ class BaseCollector {
 
             // Подключаемся к БД
             await this.dbManager.connect();
+            
+            // Создаем/обновляем схему БД после подключения
+            await this.createSchema();
 
             // Проверяем API подключение
             await this.checkApiConnection();

@@ -85,10 +85,7 @@ CREATE TABLE IF NOT EXISTS topvisor.positions (
     event_date DATE NOT NULL,
     position INTEGER,
     relevant_url TEXT DEFAULT '',
-    snippet TEXT DEFAULT '',
-    project_engine_id INTEGER NOT NULL REFERENCES common.dim_projects_engines(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    project_engine_id INTEGER NOT NULL REFERENCES common.dim_projects_engines(id)
 );
 
 -- Создание индексов для оптимизации (ОБНОВЛЕННЫЕ)
@@ -133,9 +130,8 @@ SELECT
     COUNT(CASE WHEN p.position IS NOT NULL THEN 1 END) as positioned_keywords,
     COUNT(CASE WHEN p.position <= 10 THEN 1 END) as top10_positions,
     COUNT(CASE WHEN p.position <= 3 THEN 1 END) as top3_positions,
-    ROUND(AVG(p.position), 2) as avg_position,
-    MIN(p.created_at) as first_import,
-    MAX(p.created_at) as last_import
+    ROUND(AVG(p.position), 2) as avg_position
+    
 FROM topvisor.positions p
 JOIN common.dim_projects_engines d ON p.project_engine_id = d.id
 GROUP BY d.project_name, d.search_engine, p.event_date
@@ -148,7 +144,6 @@ COMMENT ON COLUMN topvisor.positions.request IS 'Ключевое слово/п�
 COMMENT ON COLUMN topvisor.positions.event_date IS 'Дата сбора данных';
 COMMENT ON COLUMN topvisor.positions.position IS 'Позиция в выдаче (NULL если не ранжируется)';
 COMMENT ON COLUMN topvisor.positions.relevant_url IS 'URL страницы в результатах поиска';
-COMMENT ON COLUMN topvisor.positions.snippet IS 'Сниппет из поисковой выдачи';
 COMMENT ON COLUMN topvisor.positions.project_engine_id IS 'Внешний ключ на справочник проектов и поисковых систем';
 
 

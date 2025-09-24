@@ -246,8 +246,6 @@ async function main() {
             // Получаем коллектор для сервиса
             const collector = await getCollector(serviceName);
             
-            // Создаем схему БД если нужно
-            await collector.createSchema();
             
             // Запускаем сбор данных
             const stats = await collector.run({
