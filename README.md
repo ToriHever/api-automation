@@ -188,7 +188,7 @@ npm run test:connections
 npm run test:all
 
 # Тестирование для продакшена
-Нужно находится в дирректории /opt/api-automation/
+# Нужно находится в дирректории /opt/api-automation/
 node utils/debug-universal.js topvisor
 node utils/debug-universal.js topvisor 2025-09-10
 
