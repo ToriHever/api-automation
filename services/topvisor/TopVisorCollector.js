@@ -5,30 +5,67 @@ const axios = require('axios');
 class TopVisorCollector extends BaseCollector {
     constructor() {
         super('topvisor');
-        
-        // Загружаем конфигурацию сервиса
         this.config = this.getConfig();
         
-        // словарь поисковиков
-        this.searchEngineMap = {
-            "7": "Google",
-            "5": "Yandex",
-            "159": "Google",
-            "701": "Bing"
-        };
-
-        // словарь проектов
-        this.projectMap = {
-            "11430357": "Термины",
-            "7093082": "Блог",
-            "7063718": "DDG-EN",
-            "7063822": "DDG-RU"
-        };
+        // Кэш для быстрого доступа к маппингам
+        this.projectEngineCache = new Map();
     }
-
-    /**
-     * Проверка подключения к API
-     */
+    
+    
+   // 1. НОВЫЕ МЕТОДЫ ДЛЯ РАБОТЫ СО СПРАВОЧНИКОМ
+    async loadProjectEngineMap() {
+        try {
+            const result = await this.dbManager.query(
+                `SELECT topvisor_project_id, topvisor_region_id, id as project_engine_id
+                 FROM common.dim_projects_engines 
+                 WHERE topvisor_project_id IS NOT NULL AND topvisor_region_id IS NOT NULL`
+            );
+            
+            // Очищаем кэш
+            this.projectEngineCache.clear();
+            
+            // Заполняем кэш: ключ = "topvisor_project_id:topvisor_region_id"
+            for (const row of result.rows) {
+                const cacheKey = `${row.topvisor_project_id}:${row.topvisor_region_id}`;
+                this.projectEngineCache.set(cacheKey, row.project_engine_id);
+            }
+            
+            this.logger.info(`Загружено ${this.projectEngineCache.size} маппингов из справочника`);
+        } catch (error) {
+            this.logger.error('Ошибка загрузки маппинга проектов', error);
+        }
+    }                                          /* Загружает маппинг TopVisor ID → project_engine_id из БД */
+    async getProjectEngineId(topvisorProjectId, topvisorRegionId) {
+        const cacheKey = `${topvisorProjectId}:${topvisorRegionId}`;
+        
+        // Проверяем кэш
+        if (this.projectEngineCache.has(cacheKey)) {
+            return this.projectEngineCache.get(cacheKey);
+        }
+        
+        // Если нет в кэше, ищем в БД
+        try {
+            const result = await this.dbManager.query(
+                `SELECT id FROM common.dim_projects_engines 
+                 WHERE topvisor_project_id = $1 AND topvisor_region_id = $2`,
+                [topvisorProjectId, topvisorRegionId]
+            );
+            
+            if (result.rows.length > 0) {
+                const id = result.rows[0].id;
+                this.projectEngineCache.set(cacheKey, id);
+                return id;
+            }
+            
+            // Если не нашли - это ошибка, т.к. маппинг должен существовать
+            throw new Error(`Не найден маппинг для topvisor_project_id=${topvisorProjectId}, topvisor_region_id=${topvisorRegionId}`);
+            
+        } catch (error) {
+            this.logger.error(`Ошибка получения project_engine_id для ${cacheKey}`, error);
+            throw error;
+        }
+    }         /* Получает project_engine_id по TopVisor ID */
+    
     async checkApiConnection() {
         this.logger.info('Проверка подключения к TopVisor API');
         
@@ -53,11 +90,7 @@ class TopVisorCollector extends BaseCollector {
             this.logger.error('Ошибка подключения к TopVisor API', error);
             throw new Error(`TopVisor API недоступен: ${error.message}`);
         }
-    }
-
-    /**
-     * Получение данных из API
-     */
+    }                                            /* Проверка подключения к API*/
     async fetchData(startDate, endDate) {
         // Если даты не переданы, используем вчерашний день
         if (!startDate) {
@@ -106,7 +139,8 @@ class TopVisorCollector extends BaseCollector {
             for (const result of results) {
                 if (result.success) {
                     if (result.data.result && result.data.result.keywords) {
-                        allData.push(...this.transformApiData(result.data, result.requestConfig.name));
+                       const transformedData = await this.transformApiData(result.data, result.requestConfig.name);
+                        allData.push(...transformedData);
                     }
                 } else {
                     this.logger.error(`Не удалось выполнить запрос "${result.requestConfig.name}"`, result.error);
@@ -123,11 +157,30 @@ class TopVisorCollector extends BaseCollector {
 
         this.logger.info(`Получено ${allData.length} записей из API`);
         return allData;
-    }
+    }                                   /* Получение данных из API */
+    async saveData(records) {
+        let saved = 0;
+        let errors = 0;
 
-    /**
-     * Построение конфигурации API запросов
-     */
+        for (const record of records) {
+            try {
+                const exists = await this.recordExists(record);
+                
+                if (exists) {
+                    await this.updateRecord(record);
+                } else {
+                    await this.insertRecord(record);
+                }
+
+                saved++;
+            } catch (error) {
+                this.logger.error(`Ошибка сохранения записи: ${this.getRecordKey(record)}`, error);
+                errors++;
+            }
+        }
+
+        return { saved, errors };
+    }
     buildApiRequests(startDate, endDate) {
         return [
             {
@@ -219,11 +272,7 @@ class TopVisorCollector extends BaseCollector {
                 }
             }
         ];
-    }
-
-    /**
-     * Выполнение одного API запроса с повторными попытками
-     */
+    }                                  /* Построение конфигурации API запросов     */
     async makeApiRequest(requestConfig, retries = 3) {
         for (let attempt = 1; attempt <= retries; attempt++) {
             try {
@@ -265,17 +314,18 @@ class TopVisorCollector extends BaseCollector {
                 await this.delay(5000); // 5 секунд задержка перед повтором
             }
         }
-    }
-
-    /**
-     * Трансформация данных API в единый формат
-     */
-    transformApiData(data, requestName) {
+    }                      /* Выполнение одного API запроса с повторными попытками*/
+    async transformApiData(data, requestName) {
         const records = [];
         
         if (!data.result || !data.result.keywords) {
             this.logger.warn(`API вернул пустой результат для "${requestName}"`);
             return records;
+        }
+
+        // Загружаем маппинг при первом вызове
+        if (this.projectEngineCache.size === 0) {
+            await this.loadProjectEngineMap();
         }
 
         for (const keyword of data.result.keywords) {
@@ -286,98 +336,86 @@ class TopVisorCollector extends BaseCollector {
             }
 
             for (const key in keyword.positionsData) {
-                const [event_date, project_id, region_index] = key.split(":");
+                const [event_date, topvisor_project_id, topvisor_region_id] = key.split(":");
                 const positionData = keyword.positionsData[key];
                 
                 let position = positionData.position;
                 let relevant_url = positionData.relevant_url || '';
                 let snippet = positionData.snippet || '';
 
-                // обработка позиции
+                // Обработка позиции
                 if (position === "--") {
                     position = null;
                 } else {
                     position = parseInt(position, 10);
                 }
 
-                // интерпретация значений
-                const project_name = this.projectMap[project_id] || project_id;
-                const search_engine = this.searchEngineMap[region_index] || region_index;
+                try {
+                    // Получаем project_engine_id из справочника
+                    const project_engine_id = await this.getProjectEngineId(topvisor_project_id, topvisor_region_id);
+                    
 
-                records.push({
-                    request,
-                    event_date,
-                    project_name,
-                    search_engine,
-                    position,
-                    relevant_url,
-                    snippet
-                });
+                    records.push({
+                        request,
+                        event_date,
+                        position,
+                        relevant_url,
+                        snippet,
+                        project_engine_id  // ← ID из справочника
+                    });
+                    
+                } catch (error) {
+                    this.logger.error(`Пропускаем запись из-за ошибки маппинга: ${key}`, error);
+                    continue;
+                }
             }
         }
 
         return records;
-    }
-
-    /**
-     * Проверка существования записи
-     */
+    }                             /* Трансформация данных API с использованием БД-справочника*/
     async recordExists(record) {
         try {
             const result = await this.dbManager.query(
                 `SELECT id FROM topvisor.positions 
-                 WHERE request = $1 AND event_date = $2 AND project_name = $3 AND search_engine = $4`,
-                [record.request, record.event_date, record.project_name, record.search_engine]
+                 WHERE request = $1 AND event_date = $2 AND project_engine_id = $3`,
+                [record.request, record.event_date, record.project_engine_id]
             );
             return result.rows.length > 0;
         } catch (error) {
             this.logger.error('Ошибка проверки существования записи', error);
             return false;
         }
-    }
-
-    /**
-     * Вставка новой записи
-     */
+    }                                            /* Проверка существования записи (обновленная) */
     async insertRecord(record) {
         await this.dbManager.query(
-            `INSERT INTO topvisor.positions (request, event_date, project_name, search_engine, position, relevant_url, snippet)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            `INSERT INTO topvisor.positions 
+             (request, event_date, position, relevant_url, snippet, project_engine_id)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
             [
                 record.request,
                 record.event_date,
-                record.project_name,
-                record.search_engine,
                 record.position,
                 record.relevant_url,
-                record.snippet
+                record.snippet,
+                record.project_engine_id
             ]
         );
-    }
-
-    /**
-     * Обновление существующей записи
-     */
+    }                                            /* Вставка новой записи (обновленная)*/
     async updateRecord(record) {
         await this.dbManager.query(
             `UPDATE topvisor.positions 
-             SET position = $5, relevant_url = $6, snippet = $7, created_at = CURRENT_TIMESTAMP
-             WHERE request = $1 AND event_date = $2 AND project_name = $3 AND search_engine = $4`,
+             SET position = $4, relevant_url = $5, snippet = $6, updated_at = CURRENT_TIMESTAMP
+             WHERE request = $1 AND event_date = $2 AND project_engine_id = $3`,
             [
                 record.request,
                 record.event_date,
-                record.project_name,
-                record.search_engine,
+                record.project_engine_id,
                 record.position,
                 record.relevant_url,
                 record.snippet
             ]
         );
-    }
-
-    /**
-     * Проверка существующих данных за дату
-     */
+    }                                            /* Обновление существующей записи (обновленная)*/
     async checkExistingData(date) {
         try {
             const result = await this.dbManager.query(
@@ -389,47 +427,32 @@ class TopVisorCollector extends BaseCollector {
             this.logger.warn(`Ошибка проверки существующих данных: ${error.message}`);
             return 0;
         }
-    }
-
-    /**
-     * Получение ключа записи для логирования
-     */
+    }                                         /* Проверка существующих данных за дату */
     getRecordKey(record) {
-        return `${record.request}|${record.event_date}|${record.project_name}|${record.search_engine}`;
-    }
-
-    /**
-     * Разделение массива на батчи
-     */
+        return `${record.request}|${record.event_date}`;
+    }                                                  /* Получение ключа записи для логирования */
     chunkArray(array, chunkSize) {
         const chunks = [];
         for (let i = 0; i < array.length; i += chunkSize) {
             chunks.push(array.slice(i, i + chunkSize));
         }
         return chunks;
-    }
-
-    /**
-     * Функция задержки
-     */
+    }                                          /* Разделение массива на батчи*/
     delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    /**
-     * Получение статистики за период
-     */
+    }                                                             /* Функция задержки*/
     async getStats(startDate, endDate) {
         try {
             const result = await this.dbManager.query(
                 `SELECT 
                     COUNT(*) as total_records,
-                    COUNT(DISTINCT project_name) as projects_count,
-                    COUNT(DISTINCT search_engine) as search_engines_count,
-                    MIN(event_date) as first_date,
-                    MAX(event_date) as last_date
-                 FROM topvisor.positions 
-                 WHERE event_date BETWEEN $1 AND $2`,
+                    COUNT(DISTINCT d.project_name) as projects_count,
+                    COUNT(DISTINCT d.search_engine) as search_engines_count,
+                    MIN(p.event_date) as first_date,
+                    MAX(p.event_date) as last_date
+                 FROM topvisor.positions p
+                 JOIN common.dim_projects_engines d ON p.project_engine_id = d.id
+                 WHERE p.event_date BETWEEN $1 AND $2`,
                 [startDate, endDate]
             );
 
@@ -446,7 +469,7 @@ class TopVisorCollector extends BaseCollector {
                 total_records: 0
             };
         }
-    }
+    }                                    /* Получение статистики за период*/
 }
 
 module.exports = TopVisorCollector;
