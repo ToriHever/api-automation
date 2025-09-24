@@ -1,0 +1,679 @@
+// services/topvisor/TopVisorCollector.js
+const BaseCollector = require('../../core/BaseCollector');
+const axios = require('axios');
+const crypto = require('crypto');
+
+class TopVisorCollector extends BaseCollector {
+    constructor() {
+        super('topvisor');
+        
+        // Загружаем конфигурацию сервиса
+        this.config = this.getConfig();
+        
+        // словарь поисковиков
+        this.searchEngineMap = {
+            "7": "Google",
+            "5": "Yandex",
+            "159": "Google",
+            "701": "Bing"
+        };
+
+        // словарь проектов
+        this.projectMap = {
+            "11430357": "Термины",
+            "7093082": "Блог",
+            "7063718": "DDG-EN",
+            "7063822": "DDG-RU"
+        };
+
+        // Кэш для project_engine_id чтобы избежать повторных запросов к БД
+        this.projectEngineCache = new Map();
+        // Кэш для snippet_id
+        this.snippetCache = new Map();
+    }
+
+    /**
+     * Проверка подключения к API
+     */
+    async checkApiConnection() {
+        this.logger.info('Проверка подключения к TopVisor API');
+        
+        try {
+            // Простой запрос для проверки API
+            const response = await axios.post(
+                process.env.TOPVISOR_API_URL,
+                { "show": "info" }, // Минимальный запрос
+                {
+                    headers: {
+                        Authorization: `Bearer ${process.env.TOPVISOR_API_KEY}`,
+                        "User-Id": process.env.TOPVISOR_USER_ID,
+                        "Content-Type": "application/json"
+                    },
+                    timeout: 10000
+                }
+            );
+
+            this.logger.info('TopVisor API подключение успешно');
+            return true;
+        } catch (error) {
+            this.logger.error('Ошибка подключения к TopVisor API', error);
+            throw new Error(`TopVisor API недоступен: ${error.message}`);
+        }
+    }
+
+    /**
+     * Получение данных из API
+     */
+    async fetchData(startDate, endDate) {
+        // Если даты не переданы, используем вчерашний день
+        if (!startDate) {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            startDate = yesterday.toISOString().split('T')[0];
+            endDate = startDate;
+        }
+
+        this.logger.info(`Получение данных за период: ${startDate} - ${endDate}`);
+
+        // Конфигурация запросов
+        const apiRequests = this.buildApiRequests(startDate, endDate);
+        
+        // Проверяем существующие данные
+        const existingRecords = await this.checkExistingData(startDate);
+        if (existingRecords > 0 && !process.env.FORCE_OVERRIDE) {
+            this.logger.warn(`Обнаружено ${existingRecords} записей за ${startDate}`);
+            this.stats.warnings.push(`Данные за ${startDate} уже существуют (${existingRecords} записей)`);
+            return [];
+        }
+
+        if (existingRecords > 0 && process.env.FORCE_OVERRIDE === 'true') {
+            this.logger.info(`Принудительная перезапись: удаление ${existingRecords} записей за ${startDate}`);
+            await this.dbManager.query('DELETE FROM topvisor.positions WHERE event_date = $1', [startDate]);
+        }
+
+        // Разделяем запросы на батчи по 4
+        const requestBatches = this.chunkArray(apiRequests, 4);
+        const allData = [];
+
+        for (let batchIndex = 0; batchIndex < requestBatches.length; batchIndex++) {
+            const batch = requestBatches[batchIndex];
+            this.logger.info(`Обработка батча ${batchIndex + 1}/${requestBatches.length} (${batch.length} запросов)`);
+
+            // Выполняем запросы в батче параллельно
+            const promises = batch.map(requestConfig => 
+                this.makeApiRequest(requestConfig)
+                    .then(data => ({ success: true, data, requestConfig }))
+                    .catch(error => ({ success: false, error, requestConfig }))
+            );
+
+            const results = await Promise.all(promises);
+
+            // Обрабатываем результаты
+            for (const result of results) {
+                if (result.success) {
+                    if (result.data.result && result.data.result.keywords) {
+                        const transformedData = this.transformApiData(result.data, result.requestConfig.name);
+                        allData.push(...transformedData);
+                    }
+                } else {
+                    this.logger.error(`Не удалось выполнить запрос "${result.requestConfig.name}"`, result.error);
+                    this.stats.errors++;
+                }
+            }
+
+            // Задержка между батчами (кроме последнего)
+            if (batchIndex < requestBatches.length - 1) {
+                this.logger.info("Пауза 5 секунд между батчами...");
+                await this.delay(5000);
+            }
+        }
+
+        this.logger.info(`Получено ${allData.length} записей из API`);
+        return allData;
+    }
+
+    /**
+     * Трансформация данных API в промежуточный формат (без обращения к БД)
+     */
+    transformApiData(data, requestName) {
+        const records = [];
+        
+        if (!data.result || !data.result.keywords) {
+            this.logger.warn(`API вернул пустой результат для "${requestName}"`);
+            return records;
+        }
+
+        // Трансформируем данные в промежуточный формат без обращения к БД
+        for (const keyword of data.result.keywords) {
+            const request = keyword.name;
+
+            if (!keyword.positionsData || Object.keys(keyword.positionsData).length === 0) {
+                continue;
+            }
+
+            for (const key in keyword.positionsData) {
+                const [event_date, project_id, region_index] = key.split(":");
+                const positionData = keyword.positionsData[key];
+                
+                let position = positionData.position;
+                const relevant_url = positionData.relevant_url || '';
+                const snippet = positionData.snippet || '';
+
+                // обработка позиции
+                if (position === "--") {
+                    position = null;
+                } else {
+                    position = parseInt(position, 10);
+                }
+
+                // Сохраняем исходные данные для последующего получения ID
+                const project_name = this.projectMap[project_id] || project_id;
+                const search_engine = this.searchEngineMap[region_index] || region_index;
+
+                records.push({
+                    request,
+                    event_date,
+                    position,
+                    relevant_url,
+                    snippet, // Сохраняем исходный сниппет
+                    project_name, // Сохраняем исходные значения
+                    search_engine, // для получения ID позже
+                    // ID будут заполнены в processAndSaveData
+                    snippet_id: null,
+                    project_engine_id: null
+                });
+            }
+        }
+
+        return records;
+    }
+
+    /**
+     * Обработка и сохранение данных с получением dimension ID
+     */
+    async processAndSaveData(data, forceOverride = false) {
+        this.logger.info(`Processing ${data.length} records`);
+        
+        // Сначала обрабатываем dimension данные
+        await this.processDimensionData(data);
+        
+        // Теперь вызываем базовый метод обработки
+        return await super.processAndSaveData(data, forceOverride);
+    }
+
+    /**
+     * Обработка dimension данных - получение ID для project_engines и snippets
+     */
+    async processDimensionData(records) {
+        // Собираем уникальные комбинации
+        const uniqueProjectEngines = new Set();
+        const uniqueSnippets = new Set();
+
+        for (const record of records) {
+            if (record.project_name && record.search_engine) {
+                uniqueProjectEngines.add(`${record.project_name}|${record.search_engine}`);
+            }
+            if (record.snippet && record.snippet.trim() !== '') {
+                uniqueSnippets.add(record.snippet);
+            }
+        }
+
+        this.logger.info(`Обработка dimension данных: ${uniqueProjectEngines.size} проект-движков, ${uniqueSnippets.size} сниппетов`);
+
+        // Batch создание/получение ID
+        await this.batchCreateProjectEngines(uniqueProjectEngines);
+        await this.batchCreateSnippets(uniqueSnippets);
+
+        // Заполняем ID в записях
+        for (const record of records) {
+            if (record.project_name && record.search_engine) {
+                const key = `${record.project_name}|${record.search_engine}`;
+                record.project_engine_id = this.projectEngineCache.get(key);
+                
+                if (!record.project_engine_id) {
+                    throw new Error(`Не найден project_engine_id для ${key}`);
+                }
+            }
+
+            if (record.snippet && record.snippet.trim() !== '') {
+                const snippetHash = this.createSnippetHash(record.snippet);
+                record.snippet_id = this.snippetCache.get(snippetHash);
+                
+                if (!record.snippet_id) {
+                    throw new Error(`Не найден snippet_id для хеша ${snippetHash}`);
+                }
+            }
+        }
+    }
+
+    /**
+     * Валидация записи (переопределяем для новой структуры)
+     */
+    async validateRecord(record) {
+        if (!record || typeof record !== 'object') {
+            return null;
+        }
+
+        // Проверяем обязательные поля
+        if (!record.request || !record.event_date || !record.project_engine_id) {
+            this.logger.warn('Запись не прошла валидацию - отсутствуют обязательные поля', {
+                hasRequest: !!record.request,
+                hasEventDate: !!record.event_date,
+                hasProjectEngineId: !!record.project_engine_id
+            });
+            return null;
+        }
+
+        return record;
+    }
+        for (const projectEngine of uniqueProjectEngines) {
+            const [project_name, search_engine] = projectEngine.split('|');
+            
+            // Проверяем кэш
+            if (this.projectEngineCache.has(projectEngine)) {
+                continue;
+            }
+
+            try {
+                const result = await this.dbManager.query(
+                    'SELECT get_or_create_project_engine_id($1, $2) as id',
+                    [project_name, search_engine]
+                );
+                
+                const projectEngineId = result.rows[0].id;
+                this.projectEngineCache.set(projectEngine, projectEngineId);
+                
+                this.logger.debug(`Project Engine ID: ${project_name}|${search_engine} = ${projectEngineId}`);
+            } catch (error) {
+                this.logger.error(`Ошибка получения project_engine_id для ${projectEngine}`, error);
+                throw error;
+            }
+        }
+    }
+
+    /**
+     * Batch создание/получение snippet_id
+     */
+    async batchCreateSnippets(uniqueSnippets) {
+        for (const snippet of uniqueSnippets) {
+            const snippetHash = this.createSnippetHash(snippet);
+            
+            // Проверяем кэш
+            if (this.snippetCache.has(snippetHash)) {
+                continue;
+            }
+
+            try {
+                const result = await this.dbManager.query(
+                    'SELECT get_or_create_snippet_id($1) as id',
+                    [snippet]
+                );
+                
+                const snippetId = result.rows[0].id;
+                this.snippetCache.set(snippetHash, snippetId);
+                
+                this.logger.debug(`Snippet ID: ${snippetHash} = ${snippetId}`);
+            } catch (error) {
+                this.logger.error(`Ошибка получения snippet_id для ${snippetHash}`, error);
+                throw error;
+            }
+        }
+    }
+
+    /**
+     * Создание MD5 хеша для сниппета
+     */
+    createSnippetHash(snippet) {
+        return crypto.createHash('md5').update(snippet).digest('hex');
+    }
+
+    /**
+     * Получение project_engine_id (с кэшированием)
+     */
+    async getOrCreateProjectEngineId(project_name, search_engine) {
+        const key = `${project_name}|${search_engine}`;
+        
+        // Проверяем кэш
+        if (this.projectEngineCache.has(key)) {
+            return this.projectEngineCache.get(key);
+        }
+
+        try {
+            const result = await this.dbManager.query(
+                'SELECT get_or_create_project_engine_id($1, $2) as id',
+                [project_name, search_engine]
+            );
+            
+            const projectEngineId = result.rows[0].id;
+            this.projectEngineCache.set(key, projectEngineId);
+            
+            return projectEngineId;
+        } catch (error) {
+            this.logger.error(`Ошибка получения project_engine_id для ${key}`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Получение snippet_id (с кэшированием)
+     */
+    async getOrCreateSnippetId(snippet) {
+        if (!snippet) return null;
+        
+        const snippetHash = this.createSnippetHash(snippet);
+        
+        // Проверяем кэш
+        if (this.snippetCache.has(snippetHash)) {
+            return this.snippetCache.get(snippetHash);
+        }
+
+        try {
+            const result = await this.dbManager.query(
+                'SELECT get_or_create_snippet_id($1) as id',
+                [snippet]
+            );
+            
+            const snippetId = result.rows[0].id;
+            this.snippetCache.set(snippetHash, snippetId);
+            
+            return snippetId;
+        } catch (error) {
+            this.logger.error(`Ошибка получения snippet_id`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Построение конфигурации API запросов
+     */
+    buildApiRequests(startDate, endDate) {
+        return [
+            {
+                name: "Позиции: Данные по RU сайту для Яндекс",
+                body: {
+                    "project_id": "7063822",
+                    "regions_indexes": ["5"],
+                    "date1": startDate,
+                    "date2": endDate,
+                    "positions_fields": ["relevant_url", "position", "snippet"],
+                    "show_groups": true
+                }
+            },
+            {
+                name: "Позиции: Данные по RU сайту для Google",
+                body: {
+                    "project_id": "7063822",
+                    "regions_indexes": ["7"],
+                    "date1": startDate,
+                    "date2": endDate,
+                    "positions_fields": ["relevant_url", "position", "snippet"],
+                    "show_groups": true
+                }
+            },
+            {
+                name: "Позиции: Данные по EN сайту для Google",
+                body: {
+                    "project_id": "7063718",
+                    "regions_indexes": ["159"],
+                    "date1": startDate,
+                    "date2": endDate,
+                    "positions_fields": ["relevant_url", "position", "snippet"],
+                    "show_groups": true
+                }
+            },
+            {
+                name: "Позиции: Данные по EN сайту для Bing",
+                body: {
+                    "project_id": "7063718",
+                    "regions_indexes": ["701"],
+                    "date1": startDate,
+                    "date2": endDate,
+                    "positions_fields": ["relevant_url", "position", "snippet"],
+                    "show_groups": true
+                }
+            },
+            {
+                name: "Позиции: Данные по Блог для Яндекс",
+                body: {
+                    "project_id": "7093082",
+                    "regions_indexes": ["5"],
+                    "date1": startDate,
+                    "date2": endDate,
+                    "positions_fields": ["relevant_url", "position", "snippet"],
+                    "show_groups": true
+                }
+            },
+            {
+                name: "Позиции: Данные по Блог для Google",
+                body: {
+                    "project_id": "7093082",
+                    "regions_indexes": ["7"],
+                    "date1": startDate,
+                    "date2": endDate,
+                    "positions_fields": ["relevant_url", "position", "snippet"],
+                    "show_groups": true
+                }
+            },
+            {
+                name: "Позиции: Данные по Термины для Яндекс",
+                body: {
+                    "project_id": "11430357",
+                    "regions_indexes": ["5"],
+                    "date1": startDate,
+                    "date2": endDate,
+                    "positions_fields": ["relevant_url", "position", "snippet"],
+                    "show_groups": true
+                }
+            },
+            {
+                name: "Позиции: Данные по Термины для Google",
+                body: {
+                    "project_id": "11430357",
+                    "regions_indexes": ["7"],
+                    "date1": startDate,
+                    "date2": endDate,
+                    "positions_fields": ["relevant_url", "position", "snippet"],
+                    "show_groups": true
+                }
+            }
+        ];
+    }
+
+    /**
+     * Выполнение одного API запроса с повторными попытками
+     */
+    async makeApiRequest(requestConfig, retries = 3) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                this.logger.info(`Выполнение запроса: ${requestConfig.name} (попытка ${attempt})`);
+                
+                const response = await axios.post(
+                    process.env.TOPVISOR_API_URL,
+                    requestConfig.body,
+                    {
+                        headers: {
+                            Authorization: `Bearer ${process.env.TOPVISOR_API_KEY}`,
+                            "User-Id": process.env.TOPVISOR_USER_ID,
+                            "Content-Type": "application/json"
+                        },
+                        timeout: 30000 // 30 секунд таймаут
+                    }
+                );
+
+                this.logger.info(`Запрос "${requestConfig.name}" выполнен успешно`);
+                return response.data;
+
+            } catch (error) {
+                if (error.response?.status === 429) {
+                    this.logger.warn(`Превышен лимит API для "${requestConfig.name}". Попытка ${attempt}/${retries}`);
+                    if (attempt < retries) {
+                        const waitTime = attempt * 10000; // 10, 20, 30 секунд
+                        this.logger.info(`Ожидание ${waitTime/1000} секунд перед повторной попыткой...`);
+                        await this.delay(waitTime);
+                        continue;
+                    }
+                }
+                
+                if (attempt === retries) {
+                    this.logger.error(`Ошибка в запросе "${requestConfig.name}" после ${retries} попыток`, error);
+                    throw error;
+                }
+                
+                this.logger.warn(`Ошибка в запросе "${requestConfig.name}". Попытка ${attempt}/${retries}`, error);
+                await this.delay(5000); // 5 секунд задержка перед повтором
+            }
+        }
+    }
+
+    /**
+     * Проверка существования записи (обновлено для новой структуры)
+     */
+    async recordExists(record) {
+        try {
+            const result = await this.dbManager.query(
+                `SELECT id FROM topvisor.positions 
+                 WHERE request = $1 AND event_date = $2 AND project_engine_id = $3`,
+                [record.request, record.event_date, record.project_engine_id]
+            );
+            return result.rows.length > 0;
+        } catch (error) {
+            this.logger.error('Ошибка проверки существования записи', error);
+            return false;
+        }
+    }
+
+    /**
+     * Вставка новой записи (обновлено для новой структуры)
+     */
+    async insertRecord(record) {
+        await this.dbManager.query(
+            `INSERT INTO topvisor.positions (request, event_date, position, relevant_url, snippet_id, project_engine_id)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+                record.request,
+                record.event_date,
+                record.position,
+                record.relevant_url,
+                record.snippet_id,
+                record.project_engine_id
+            ]
+        );
+    }
+
+    /**
+     * Обновление существующей записи (обновлено для новой структуры)
+     */
+    async updateRecord(record) {
+        await this.dbManager.query(
+            `UPDATE topvisor.positions 
+             SET position = $3, relevant_url = $4, snippet_id = $5, updated_at = CURRENT_TIMESTAMP
+             WHERE request = $1 AND event_date = $2 AND project_engine_id = $6`,
+            [
+                record.request,
+                record.event_date,
+                record.position,
+                record.relevant_url,
+                record.snippet_id,
+                record.project_engine_id
+            ]
+        );
+    }
+
+    /**
+     * Проверка существующих данных за дату
+     */
+    async checkExistingData(date) {
+        try {
+            const result = await this.dbManager.query(
+                'SELECT COUNT(*) FROM topvisor.positions WHERE event_date = $1',
+                [date]
+            );
+            return parseInt(result.rows[0].count, 10);
+        } catch (error) {
+            this.logger.warn(`Ошибка проверки существующих данных: ${error.message}`);
+            return 0;
+        }
+    }
+
+    /**
+     * Получение ключа записи для логирования
+     */
+    getRecordKey(record) {
+        return `${record.request}|${record.event_date}|${record.project_engine_id || 'no-pe-id'}`;
+    }
+
+    /**
+     * Очистка кэшей (вызывается после завершения обработки)
+     */
+    clearCaches() {
+        this.projectEngineCache.clear();
+        this.snippetCache.clear();
+        this.logger.debug('Кэши очищены');
+    }
+
+    /**
+     * Разделение массива на батчи
+     */
+    chunkArray(array, chunkSize) {
+        const chunks = [];
+        for (let i = 0; i < array.length; i += chunkSize) {
+            chunks.push(array.slice(i, i + chunkSize));
+        }
+        return chunks;
+    }
+
+    /**
+     * Функция задержки
+     */
+    delay(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Получение статистики за период (обновлено с учетом новой структуры)
+     */
+    async getStats(startDate, endDate) {
+        try {
+            const result = await this.dbManager.query(
+                `SELECT 
+                    COUNT(*) as total_records,
+                    COUNT(DISTINCT p.project_engine_id) as projects_count,
+                    COUNT(DISTINCT pe.search_engine) as search_engines_count,
+                    MIN(p.event_date) as first_date,
+                    MAX(p.event_date) as last_date
+                 FROM topvisor.positions p
+                 JOIN common.dim_projects_engines pe ON p.project_engine_id = pe.id
+                 WHERE p.event_date BETWEEN $1 AND $2`,
+                [startDate, endDate]
+            );
+
+            return {
+                service: this.serviceName,
+                period: { startDate, endDate },
+                ...result.rows[0]
+            };
+        } catch (error) {
+            this.logger.error('Ошибка получения статистики', error);
+            return {
+                service: this.serviceName,
+                period: { startDate, endDate },
+                total_records: 0
+            };
+        }
+    }
+
+    /**
+     * Переопределяем основной метод для очистки кэшей в конце
+     */
+    async run(options = {}) {
+        try {
+            return await super.run(options);
+        } finally {
+            this.clearCaches();
+        }
+    }
+}
+
+module.exports = TopVisorCollector;
+
+module.exports = TopVisorCollector;
