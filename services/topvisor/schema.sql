@@ -61,6 +61,23 @@ CREATE INDEX IF NOT EXISTS idx_dim_projects_engines_name_engine
 -- Создание схемы для TopVisor данных
 CREATE SCHEMA IF NOT EXISTS topvisor;
 
+CREATE TABLE IF NOT EXISTS topvisor.dim_snippets (
+    id SERIAL PRIMARY KEY,
+    snippet TEXT NOT NULL,
+    snippet_hash CHAR(32) UNIQUE NOT NULL, -- Используйте char(32) для MD5
+    uses INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dim_snippets_hash ON topvisor.dim_snippets (snippet_hash);
+
+COMMENT ON TABLE topvisor.dim_snippets IS 'Справочник уникальных сниппетов';
+COMMENT ON COLUMN topvisor.dim_snippets.snippet IS 'Текст сниппета';
+COMMENT ON COLUMN topvisor.dim_snippets.snippet_hash IS 'MD5-хэш сниппета для быстрого поиска и предотвращения дубликатов';
+COMMENT ON COLUMN topvisor.dim_snippets.uses IS 'Количество использований этого сниппета';
+
+
 -- Создание таблицы позиций (ОБНОВЛЕННАЯ ВЕРСИЯ - без дублирующих колонок)
 CREATE TABLE IF NOT EXISTS topvisor.positions (
     id SERIAL PRIMARY KEY,

@@ -1,6 +1,7 @@
 // services/topvisor/TopVisorCollector.js
 const BaseCollector = require('../../core/BaseCollector');
 const axios = require('axios');
+const crypto = require('crypto');
 
 class TopVisorCollector extends BaseCollector {
     constructor() {
@@ -65,6 +66,41 @@ class TopVisorCollector extends BaseCollector {
             throw error;
         }
     }         /* Получает project_engine_id по TopVisor ID */
+    async getSnippetId(snippet) {
+    if (!snippet) {
+        return null;
+    }
+
+    const snippetHash = crypto.createHash('md5').update(snippet).digest('hex');
+
+    try {
+        // Ищем сниппет по хэшу
+        const result = await this.dbManager.query(
+            `SELECT id FROM topvisor.dim_snippets WHERE snippet_hash = $1`,
+            [snippetHash]
+        );
+
+        if (result.rows.length > 0) {
+            // Если найден, обновляем счетчик использования и возвращаем ID
+            const id = result.rows[0].id;
+            await this.dbManager.query(
+                `UPDATE topvisor.dim_snippets SET uses = uses + 1, update = CURRENT_TIMESTAMP WHERE id = $1`,
+                [id]
+            );
+            return id;
+        } else {
+            // Если не найден, вставляем новую запись
+            const insertResult = await this.dbManager.query(
+                `INSERT INTO topvisor.dim_snippets (snippet, snippet_hash) VALUES ($1, $2) RETURNING id`,
+                [snippet, snippetHash]
+            );
+            return insertResult.rows[0].id;
+        }
+    } catch (error) {
+        this.logger.error(`Ошибка обработки сниппета: ${snippet}`, error);
+        throw error;
+    }
+}                                           /* Поиск или создание записи в таблице topvisor.dim_snippets */
     
     async checkApiConnection() {
         this.logger.info('Проверка подключения к TopVisor API');
@@ -342,6 +378,25 @@ class TopVisorCollector extends BaseCollector {
                 let position = positionData.position;
                 let relevant_url = positionData.relevant_url || '';
                 let snippet = positionData.snippet || '';
+                
+                try {
+                    const project_engine_id = await this.getProjectEngineId(topvisor_project_id, topvisor_region_id);
+                
+                    // Получаем ID сниппета из новой справочной таблицы
+                    const snippet_id = await this.getSnippetId(snippet);
+                
+                    records.push({
+                        request,
+                        event_date,
+                        position,
+                        relevant_url,
+                        project_engine_id,
+                        snippet_id // <-- Используем snippet_id
+                    });
+                } catch (error) {
+                    this.logger.error(`Пропускаем запись из-за ошибки маппинга: ${key}`, error);
+                    continue;
+                }
 
                 // Обработка позиции
                 if (position === "--") {
@@ -389,14 +444,14 @@ class TopVisorCollector extends BaseCollector {
     async insertRecord(record) {
         await this.dbManager.query(
             `INSERT INTO topvisor.positions 
-             (request, event_date, position, relevant_url, snippet, project_engine_id)
+             (request, event_date, position, relevant_url, snippet_id, project_engine_id) -- Обновленные колонки
              VALUES ($1, $2, $3, $4, $5, $6)`,
             [
                 record.request,
                 record.event_date,
                 record.position,
                 record.relevant_url,
-                record.snippet,
+                record.snippet_id, // <-- Используем snippet_id
                 record.project_engine_id
             ]
         );
@@ -404,7 +459,7 @@ class TopVisorCollector extends BaseCollector {
     async updateRecord(record) {
         await this.dbManager.query(
             `UPDATE topvisor.positions 
-             SET position = $4, relevant_url = $5, snippet = $6, updated_at = CURRENT_TIMESTAMP
+             SET position = $4, relevant_url = $5, snippet_id = $6, update = CURRENT_TIMESTAMP -- Обновленные колонки
              WHERE request = $1 AND event_date = $2 AND project_engine_id = $3`,
             [
                 record.request,
@@ -412,7 +467,7 @@ class TopVisorCollector extends BaseCollector {
                 record.project_engine_id,
                 record.position,
                 record.relevant_url,
-                record.snippet
+                record.snippet_id // <-- Используем snippet_id
             ]
         );
     }                                            /* Обновление существующей записи (обновленная)*/
