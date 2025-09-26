@@ -134,13 +134,13 @@ class TopVisorCollector extends BaseCollector {
         }
     }
 
-    async fetchData(startDate, endDate) {
-        if (!startDate) {
-            const yesterday = new Date();
-            yesterday.setDate(yesterday.getDate() - 1);
-            startDate = yesterday.toISOString().split('T')[0];
-            endDate = startDate;
-        }
+        async fetchData(startDate, endDate) {
+            // Если даты не переданы, используем СЕГОДНЯШНИЙ день
+            if (!startDate) {
+                const today = new Date();
+                startDate = today.toISOString().split('T')[0];
+                endDate = startDate;
+            }
 
         this.logger.info(`Получение данных за период: ${startDate} - ${endDate}`);
 
