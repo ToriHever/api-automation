@@ -130,7 +130,13 @@ class BaseCollector {
                 }
 
             } catch (error) {
-                this.logger.error('Error processing record', { error, record });
+                
+                this.logger.error('Error processing record', { 
+                    error: error.message,
+                    stack: error.stack,
+                    record: this.getRecordKey(record),
+                    fullRecord: record  // Добавляем полную запись для отладки
+                });
                 this.stats.errors++;
             }
         }

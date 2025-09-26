@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS topvisor.positions (
     event_date DATE NOT NULL,
     position INTEGER,
     relevant_url TEXT DEFAULT '',
+    snippet_id INTEGER REFERENCES topvisor.dim_snippets(id),
     project_engine_id INTEGER NOT NULL REFERENCES common.dim_projects_engines(id)
 );
 
@@ -106,19 +107,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_unique
     ON topvisor.positions (request, event_date, project_engine_id);
 
 -- Создание триггера для обновления updated_at
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
+-- CREATE OR REPLACE FUNCTION update_updated_at_column()
+-- RETURNS TRIGGER AS $$
+-- BEGIN
+--     NEW.updated_at = CURRENT_TIMESTAMP;
+--     RETURN NEW;
+-- END;
+-- $$ language 'plpgsql';
 
 -- Применение триггера к таблице
-DROP TRIGGER IF EXISTS update_positions_updated_at ON topvisor.positions;
-CREATE TRIGGER update_positions_updated_at 
-    BEFORE UPDATE ON topvisor.positions 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- DROP TRIGGER IF EXISTS update_positions_updated_at ON topvisor.positions;
+-- CREATE TRIGGER update_positions_updated_at 
+--     BEFORE UPDATE ON topvisor.positions 
+--     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Создание представления для удобного анализа (ОБНОВЛЕННОЕ)
 CREATE OR REPLACE VIEW topvisor.positions_summary AS
