@@ -35,6 +35,9 @@ class GoogleAuthManager {
                 }
         
                 const params = new URLSearchParams();
+                console.log('================================');
+
+                
                 params.append('client_id', process.env.GOOGLE_CLIENT_ID);
                 params.append('client_secret', process.env.GOOGLE_CLIENT_SECRET);
                 params.append('refresh_token', refreshData.refresh_token);
@@ -65,6 +68,10 @@ class GoogleAuthManager {
                         statusText: error.response.statusText,
                         data: error.response.data
                     });
+                    
+                        console.log('=== ПОЛНАЯ ОШИБКА ОТ GOOGLE ===');
+                         console.log(JSON.stringify(error.response.data, null, 2));
+                        console.log('================================');
                     
                     // Специфические ошибки Google OAuth
                     if (error.response.data) {
