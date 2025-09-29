@@ -176,30 +176,6 @@ async function main() {
         process.exit(0);
     }
 
-    // Определяем даты
-    let startDate = options.startDate;
-    let endDate = options.endDate;
-
-    if (!options.manualMode) {
-        // Автоматический режим - вчерашний день
-        startDate = getFormattedDate(-1);
-        endDate = getFormattedDate(-1);
-    }
-
-    if (!startDate || !endDate) {
-        console.error('❌ Ошибка: Не указаны даты для обработки');
-        console.log('💡 Используйте --start-date и --end-date или автоматический режим');
-        process.exit(1);
-    }
-
-    console.log(`📅 Период данных: ${startDate} - ${endDate}`);
-    console.log(`🤖 Режим: ${options.manualMode ? 'Ручной' : 'Автоматический (вчерашний день)'}`);
-    
-    if (options.forceOverride) {
-        console.log('⚠️ Режим принудительной перезаписи активирован');
-    }
-    console.log('');
-
     // Загружаем конфигурацию сервисов
     const servicesConfig = loadServicesConfig();
 
@@ -243,9 +219,37 @@ async function main() {
             console.log(`\n🚀 Запуск сервиса: ${serviceName.toUpperCase()}`);
             console.log(`⚙️ Приоритет: ${serviceConfig.priority || 'не задан'}`);
             
+            // Определяем даты для конкретного сервиса
+            let startDate = options.startDate;
+            let endDate = options.endDate;
+
+            if (!options.manualMode) {
+                // Автоматический режим - используем настройки сервиса
+                // dateOffset из конфига (по умолчанию -1 для вчерашнего дня)
+                const dateOffset = serviceConfig.dateOffset !== undefined 
+                    ? serviceConfig.dateOffset 
+                    : -1;
+                
+                startDate = getFormattedDate(dateOffset);
+                endDate = getFormattedDate(dateOffset);
+                
+                console.log(`📅 Даты (смещение ${dateOffset} дней): ${startDate} - ${endDate}`);
+            } else {
+                console.log(`📅 Даты (ручной режим): ${startDate} - ${endDate}`);
+            }
+
+            if (!startDate || !endDate) {
+                console.error(`❌ Ошибка: Не указаны даты для сервиса ${serviceName}`);
+                console.log('💡 Используйте --start-date и --end-date или автоматический режим');
+                throw new Error('Даты не определены');
+            }
+            
+            if (options.forceOverride) {
+                console.log('⚠️ Режим принудительной перезаписи активирован');
+            }
+            
             // Получаем коллектор для сервиса
             const collector = await getCollector(serviceName);
-            
             
             // Запускаем сбор данных
             const stats = await collector.run({
