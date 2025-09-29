@@ -25,7 +25,9 @@
     "logs:cron": "tail -f logs/system/cron.log",
     "dev": "NODE_ENV=development node scripts/run-service.js",
     "force": "FORCE_OVERRIDE=true node scripts/run-service.js",
-    "manual": "MANUAL_MODE=true node scripts/run-service.js"
+    "manual": "MANUAL_MODE=true node scripts/run-service.js",
+    "auth:google": "node scripts/auth-google.js",
+    "auth:google-test": "node scripts/test-google-auth.js"
   },
   "keywords": [
     "api",
@@ -40,6 +42,7 @@
   "dependencies": {
     "axios": "^1.6.0",
     "dotenv": "^16.3.0",
+    "express": "^5.1.0",
     "joi": "^17.11.0",
     "node-cron": "^3.0.2",
     "pg": "^8.11.0",
@@ -47,8 +50,10 @@
     "winston-daily-rotate-file": "^4.7.1"
   },
   "devDependencies": {
+    "google-auth-library": "^9.15.1",
     "jest": "^29.7.0",
-    "nodemon": "^3.0.2"
+    "nodemon": "^3.0.2",
+    "open": "^8.4.2"
   },
   "engines": {
     "node": ">=16.0.0",
