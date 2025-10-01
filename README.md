@@ -21,6 +21,9 @@
 │   │   ├── 📄 WordStatCollector.js     # Коллектор WordStat
 │   │   ├── 📄 config.json              # Конфиг сервиса
 │   │   └── 📄 schema.sql               # SQL схема для WordStat
+│   │   keywords/
+│   │     ├── dynamics_keywords.txt        # Ключи для метода dynamics
+│   │     └── top_keywords.txt             # Ключи для метода topRequests
 │   │
 │   ├── 📁 clarity/
 │   │   ├── 📄 ClarityCollector.js      # Коллектор Clarity
