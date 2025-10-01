@@ -1,4 +1,3 @@
-// services/topvisor/TopVisorCollector.js
 const BaseCollector = require('../../core/BaseCollector');
 const axios = require('axios');
 const crypto = require('crypto');
@@ -6,9 +5,17 @@ const crypto = require('crypto');
 class TopVisorCollector extends BaseCollector {
     constructor() {
         super('topvisor');
-        this.config = this.getConfig();
+        // Удаляем this.config = this.getConfig(); - не нужен для TopVisor
         this.projectEngineCache = new Map();
+        this.urlMappingCache = new Map();
+        
+        // Проверяем обязательные переменные окружения
+        if (!process.env.TOPVISOR_API_KEY || !process.env.TOPVISOR_USER_ID) {
+            throw new Error('TOPVISOR_API_KEY and TOPVISOR_USER_ID environment variables are required');
+        }
     }
+    
+    
     
     // МЕТОДЫ ДЛЯ РАБОТЫ СО СПРАВОЧНИКОМ
     async loadProjectEngineMap() {
@@ -31,6 +38,8 @@ class TopVisorCollector extends BaseCollector {
             this.logger.error('Ошибка загрузки маппинга проектов', error);
         }
     }
+    
+    
 
     async getProjectEngineId(topvisorProjectId, topvisorRegionId) {
         const cacheKey = `${topvisorProjectId}:${topvisorRegionId}`;
@@ -59,6 +68,55 @@ class TopVisorCollector extends BaseCollector {
             throw error;
         }
     }
+    
+    // Метод для нормализации URL
+async normalizeUrl(url) {
+    if (!url || url.trim() === '') {
+        return null;
+    }
+
+    // Проверяем кэш
+    if (this.urlMappingCache.has(url)) {
+        return this.urlMappingCache.get(url);
+    }
+
+    try {
+        // Вставляем URL в справочник (или получаем существующий ID)
+        const result = await this.dbManager.query(
+            `INSERT INTO common.site_map (url) 
+             VALUES ($1) 
+             ON CONFLICT (url) DO UPDATE SET url = EXCLUDED.url
+             RETURNING id`,
+            [url]
+        );
+        
+        const urlId = result.rows[0].id;
+        this.urlMappingCache.set(url, urlId);
+        return urlId;
+        
+    } catch (error) {
+        this.logger.error(`Ошибка нормализации URL: ${url}`, error);
+        return null;
+    }
+}
+
+async preloadUrlMappings() {
+    try {
+        const result = await this.dbManager.query(
+            `SELECT id, url FROM common.site_map`
+        );
+        
+        this.urlMappingCache.clear();
+        
+        for (const row of result.rows) {
+            this.urlMappingCache.set(row.url, row.id);
+        }
+        
+        this.logger.info(`Загружено ${this.urlMappingCache.size} URL маппингов в кэш`);
+    } catch (error) {
+        this.logger.warn(`Не удалось загрузить URL маппинги: ${error.message}`);
+    }
+}
 
     // ИСПРАВЛЕННЫЙ метод getSnippetId
     async getSnippetId(snippet) {
@@ -134,17 +192,20 @@ class TopVisorCollector extends BaseCollector {
         }
     }
 
-        async fetchData(startDate, endDate) {
-            // Если даты не переданы, используем СЕГОДНЯШНИЙ день
-            if (!startDate) {
-                const today = new Date();
-                startDate = today.toISOString().split('T')[0];
-                endDate = startDate;
-            }
+    async fetchData(startDate, endDate) {
+    // Если даты не переданы, используем СЕГОДНЯШНИЙ день
+    if (!startDate) {
+        const today = new Date();
+        startDate = today.toISOString().split('T')[0];
+        endDate = startDate;
+    }
 
-        this.logger.info(`Получение данных за период: ${startDate} - ${endDate}`);
+    this.logger.info(`Получение данных за период: ${startDate} - ${endDate}`);
 
-        const apiRequests = this.buildApiRequests(startDate, endDate);
+    // Загружаем кэш URL перед началом работы
+    await this.preloadUrlMappings();
+
+    const apiRequests = this.buildApiRequests(startDate, endDate);
         
         const existingRecords = await this.checkExistingData(startDate);
         if (existingRecords > 0 && !process.env.FORCE_OVERRIDE) {
@@ -238,7 +299,7 @@ class TopVisorCollector extends BaseCollector {
         return { saved, errors };
     }
     
-     buildApiRequests(startDate, endDate) {
+    buildApiRequests(startDate, endDate) {
         return [
             // DDG-RU - СО СНИППЕТАМИ
             {
@@ -383,69 +444,75 @@ class TopVisorCollector extends BaseCollector {
 
     // ОЧИЩЕННЫЙ метод transformApiData (без дублирования)
     async transformApiData(data, requestName) {
-        const records = [];
-        
-        if (!data.result || !data.result.keywords) {
-            this.logger.warn(`API вернул пустой результат для "${requestName}"`);
-            return records;
-        }
+    const records = [];
     
-        if (this.projectEngineCache.size === 0) {
-            await this.loadProjectEngineMap();
-        }
-    
-        for (const keyword of data.result.keywords) {
-            const request = keyword.name;
-    
-            if (!keyword.positionsData || Object.keys(keyword.positionsData).length === 0) {
-                continue;
-            }
-    
-            for (const key in keyword.positionsData) {
-                const [event_date, topvisor_project_id, topvisor_region_id] = key.split(":");
-                const positionData = keyword.positionsData[key];
-                
-                let position = positionData.position;
-                let relevant_url = positionData.relevant_url || '';
-                let snippet = positionData.snippet; // Может быть undefined
-                
-                // Обработка позиции
-                if (position === "--") {
-                    position = null;
-                } else {
-                    position = parseInt(position, 10);
-                }
-    
-                try {
-                    const project_engine_id = await this.getProjectEngineId(topvisor_project_id, topvisor_region_id);
-                    
-                    // Получаем snippet_id только если snippet есть
-                    let snippet_id = null;
-                    if (snippet !== undefined && snippet !== null) {
-                        snippet_id = await this.getSnippetId(snippet);
-                    }
-                    
-                    records.push({
-                        request,
-                        event_date,
-                        position,
-                        relevant_url,
-                        project_engine_id,
-                        snippet_id  // Будет null для проектов без сниппетов
-                    });
-                    
-                } catch (error) {
-                    this.logger.error(`Пропускаем запись из-за ошибки:`, {
-                        key,
-                        error: error.message
-                    });
-                    continue;
-                }
-            }
-        }
-    
+    if (!data.result || !data.result.keywords) {
+        this.logger.warn(`API вернул пустой результат для "${requestName}"`);
         return records;
     }
+
+    if (this.projectEngineCache.size === 0) {
+        await this.loadProjectEngineMap();
+    }
+
+    for (const keyword of data.result.keywords) {
+        const request = keyword.name;
+
+        if (!keyword.positionsData || Object.keys(keyword.positionsData).length === 0) {
+            continue;
+        }
+
+        for (const key in keyword.positionsData) {
+            const [event_date, topvisor_project_id, topvisor_region_id] = key.split(":");
+            const positionData = keyword.positionsData[key];
+            
+            let position = positionData.position;
+            let relevant_url = positionData.relevant_url || '';
+            let snippet = positionData.snippet; // Может быть undefined
+            
+            // Обработка позиции
+            if (position === "--") {
+                position = null;
+            } else {
+                position = parseInt(position, 10);
+            }
+
+            try {
+                const project_engine_id = await this.getProjectEngineId(topvisor_project_id, topvisor_region_id);
+                
+                // Получаем snippet_id только если snippet есть
+                let snippet_id = null;
+                if (snippet !== undefined && snippet !== null) {
+                    snippet_id = await this.getSnippetId(snippet);
+                }
+                
+                records.push({
+                    request,
+                    event_date,
+                    position,
+                    relevant_url_id,
+                    project_engine_id,
+                    snippet_id
+                });
+                
+            } catch (error) {
+                // Теперь логируем полную информацию об ошибке
+                this.logger.error(`Ошибка при обработке записи:`, {
+                    key,
+                    topvisor_project_id,
+                    topvisor_region_id,
+                    request,
+                    error: error.message,
+                    stack: error.stack,
+                    timestamp: new Date().toISOString()
+                });
+                continue;
+            }
+        }
+    }
+
+    return records;
+}
 
     async recordExists(record) {
         try {
@@ -463,37 +530,38 @@ class TopVisorCollector extends BaseCollector {
 
     // ИСПРАВЛЕННЫЙ метод insertRecord (БЕЗ колонки snippet)
     async insertRecord(record) {
-        await this.dbManager.query(
-            `INSERT INTO topvisor.positions 
-             (request, event_date, position, relevant_url, snippet_id, project_engine_id)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [
-                record.request,
-                record.event_date,
-                record.position,
-                record.relevant_url,
-                record.snippet_id,
-                record.project_engine_id
-            ]
-        );
-    }
+    await this.dbManager.query(
+        `INSERT INTO topvisor.positions 
+         (request, event_date, position, relevant_url_id, snippet_id, project_engine_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+            record.request,
+            record.event_date,
+            record.position,
+            record.relevant_url_id, // Теперь ID, а не URL
+            record.snippet_id,
+            record.project_engine_id
+        ]
+    );
+}
 
     // ИСПРАВЛЕННЫЙ метод updateRecord (БЕЗ колонки snippet)
-    async updateRecord(record) {
-        await this.dbManager.query(
-            `UPDATE topvisor.positions 
-             SET position = $4, relevant_url = $5, snippet_id = $6
-             WHERE request = $1 AND event_date = $2 AND project_engine_id = $3`,
-            [
-                record.request,
-                record.event_date,
-                record.project_engine_id,
-                record.position,
-                record.relevant_url,
-                record.snippet_id
-            ]
-        );
-    }
+async updateRecord(record) {
+    await this.dbManager.query(
+        `UPDATE topvisor.positions 
+         SET position = $4, relevant_url_id = $5, snippet_id = $6
+         WHERE request = $1 AND event_date = $2 AND project_engine_id = $3`,
+        [
+            record.request,
+            record.event_date,
+            record.project_engine_id,
+            record.position,
+            record.relevant_url_id, // Теперь ID, а не URL
+            record.snippet_id
+        ]
+    );
+}
+
 
     async checkExistingData(date) {
         try {
