@@ -72,12 +72,14 @@ class TopVisorCollector extends BaseCollector {
     // Метод для нормализации URL
 async normalizeUrl(url) {
     if (!url || url.trim() === '') {
-        return null;
+        return 0;
     }
 
     // Проверяем кэш
-    if (this.urlMappingCache.has(url)) {
-        return this.urlMappingCache.get(url);
+   if (this.urlMappingCache.has(url)) {
+        const cachedValue = this.urlMappingCache.get(url);
+        // Если в кэше пустая строка, заменяем на 0
+        return cachedValue || 0;
     }
 
     try {
@@ -90,13 +92,13 @@ async normalizeUrl(url) {
             [url]
         );
         
-        const urlId = result.rows[0].id;
+        const urlId = result.rows[0].id || 0;
         this.urlMappingCache.set(url, urlId);
         return urlId;
         
     } catch (error) {
-        this.logger.error(`Ошибка нормализации URL: ${url}`, error);
-        return null;
+        this.logger.error(`Ошибка нормализации URL:  ${url}`, error);
+        return 0;
     }
 }
 
@@ -467,7 +469,7 @@ async preloadUrlMappings() {
             const positionData = keyword.positionsData[key];
             
             let position = positionData.position;
-            let relevant_url = positionData.relevant_url || '';
+            let relevant_url_id = await this.normalizeUrl(positionData.relevant_url || '') || 0;
             let snippet = positionData.snippet; // Может быть undefined
             
             // Обработка позиции

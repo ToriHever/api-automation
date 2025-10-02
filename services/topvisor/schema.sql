@@ -51,7 +51,8 @@ CREATE TABLE IF NOT EXISTS topvisor.positions (
     position INTEGER,
     relevant_url_id INTEGER REFERENCES common.site_map(id),
     snippet_id INTEGER REFERENCES topvisor.dim_snippets(id),
-    project_engine_id INTEGER NOT NULL REFERENCES common.dim_projects_engines(id)
+    project_engine_id INTEGER NOT NULL REFERENCES common.dim_projects_engines(id),
+    cluster_id INTEGER NOT NULL REFERENCES common.clusters(id)
 );
 
 -- Уникальный составной индекс для предотвращения дубликатов
