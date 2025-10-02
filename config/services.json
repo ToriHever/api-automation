@@ -1,0 +1,61 @@
+{
+  "topvisor": {
+    "enabled": true,
+    "schedule": "0 6 * * *",
+    "priority": 1,
+    "timeout": 600000,
+    "dateOffset": 0,
+    "retries": 3,
+    "description": "TopVisor позиции и ранжирование. Берет данные за текущий день",
+    "env_prefix": "TOPVISOR_"
+  },
+  "wordstat": {
+    "enabled": true,
+    "schedule": "0 9 * * *",
+    "priority": 2,
+    "timeout": 300000,
+    "retries": 2,
+    "dateOffset": -31,
+    "description": "Яндекс.Wordstat частотность запросов",
+    "env_prefix": "WORDSTAT_"
+  },
+  "clarity": {
+    "enabled": false,
+    "schedule": "0 10 * * *",
+    "priority": 3,
+    "timeout": 300000,
+    "retries": 2,
+    "description": "Microsoft Clarity аналитика пользователей.",
+    "env_prefix": "CLARITY_"
+  },
+  "ga4": {
+    "enabled": false,
+    "schedule": "0 11 * * *",
+    "priority": 4,
+    "timeout": 600000,
+    "retries": 3,
+    "dateOffset": -1,
+    "description": "Google Analytics 4 данные. Данные берутся за вчерашний день",
+    "env_prefix": "GA4_"
+  },
+  "gsc": {
+    "enabled": true,
+    "schedule": "0 12 * * *",
+    "priority": 5,
+    "timeout": 600000,
+    "retries": 3,
+    "dateOffset": -5,
+    "description": "Google Search Console поисковая аналитика. Данные берутся за вчерашний день",
+    "env_prefix": "GSC_"
+  },
+  "yandex-metrika": {
+    "enabled": false,
+    "schedule": "0 13 * * *",
+    "priority": 6,
+    "timeout": 300000,
+    "retries": 2,
+    "dateOffset": -1,
+    "description": "Яндекс.Метрика веб-аналитика. Данные берутся за вчерашний день",
+    "env_prefix": "YANDEX_METRIKA_"
+  }
+}
