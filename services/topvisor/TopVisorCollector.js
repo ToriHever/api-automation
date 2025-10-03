@@ -534,15 +534,16 @@ async preloadUrlMappings() {
     async insertRecord(record) {
     await this.dbManager.query(
         `INSERT INTO topvisor.positions 
-         (request, event_date, position, relevant_url_id, snippet_id, project_engine_id)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
+         (request, event_date, position, relevant_url_id, snippet_id, project_engine_id, cluster_topvisor_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
             record.request,
             record.event_date,
             record.position,
             record.relevant_url_id, // Теперь ID, а не URL
             record.snippet_id,
-            record.project_engine_id
+            record.project_engine_id,
+            record.cluster_topvisor_id
         ]
     );
 }
@@ -551,7 +552,7 @@ async preloadUrlMappings() {
 async updateRecord(record) {
     await this.dbManager.query(
         `UPDATE topvisor.positions 
-         SET position = $4, relevant_url_id = $5, snippet_id = $6
+         SET position = $4, relevant_url_id = $5, snippet_id = $6, cluster_topvisor_id = $7
          WHERE request = $1 AND event_date = $2 AND project_engine_id = $3`,
         [
             record.request,
@@ -559,7 +560,8 @@ async updateRecord(record) {
             record.project_engine_id,
             record.position,
             record.relevant_url_id, // Теперь ID, а не URL
-            record.snippet_id
+            record.snippet_id,
+            record.cluster_topvisor_id
         ]
     );
 }
