@@ -1,77 +1,62 @@
--- =====================================================
--- ОБНОВЛЕННАЯ СХЕМА topvisor.positions БЕЗ created_at
--- =====================================================
+-- ============================================
+-- Добавление таблицы common.requests и триггера
+-- ============================================
 
--- Создание схем если не существуют
-CREATE SCHEMA IF NOT EXISTS common;
-CREATE SCHEMA IF NOT EXISTS topvisor;
+BEGIN;
 
--- =====================================================
--- COMMON SCHEMA: Общие справочники
--- =====================================================
-
--- Справочник всех URL (общий для всех сервисов)
-CREATE TABLE IF NOT EXISTS common.site_map (
-    id SERIAL PRIMARY KEY,
-    url TEXT NOT NULL UNIQUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- Справочник проектов и поисковых систем
-CREATE TABLE IF NOT EXISTS common.dim_projects_engines (
-    id SERIAL PRIMARY KEY,
-    project_name TEXT NOT NULL,
-    search_engine TEXT NOT NULL,
-    topvisor_project_id TEXT,
-    topvisor_region_id TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(project_name, search_engine),
-    UNIQUE(topvisor_project_id, topvisor_region_id)
-);
-
--- =====================================================
--- TOPVISOR SCHEMA: Данные TopVisor
--- =====================================================
-
--- Справочник уникальных сниппетов
-CREATE TABLE IF NOT EXISTS topvisor.dim_snippets (
-    id SERIAL PRIMARY KEY,
-    snippet TEXT NOT NULL,
-    snippet_hash CHAR(32) UNIQUE NOT NULL,
-    uses INTEGER DEFAULT 1,
+-- Создание таблицы common.requests
+CREATE TABLE IF NOT EXISTS common.requests (
+    request TEXT PRIMARY KEY,
+    cluster_topvisor_id INTEGER,
+    request_id INTEGER,
+    hub_id INTEGER,
+    type_request_id INTEGER,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Таблица позиций БЕЗ created_at
-CREATE TABLE IF NOT EXISTS topvisor.positions (
-    id SERIAL PRIMARY KEY,
-    request TEXT NOT NULL,
-    event_date DATE NOT NULL,
-    position INTEGER,
-    relevant_url_id INTEGER REFERENCES common.site_map(id),
-    snippet_id INTEGER REFERENCES topvisor.dim_snippets(id),
-    project_engine_id INTEGER NOT NULL REFERENCES common.dim_projects_engines(id),
-    cluster_topvisor_id INTEGER NOT NULL REFERENCES common.clusters_topvisor(id)
-);
+-- Комментарии к таблице
+COMMENT ON TABLE common.requests IS 'Справочник поисковых запросов с кластеризацией TopVisor';
+COMMENT ON COLUMN common.requests.request IS 'Текст поискового запроса (первичный ключ)';
+COMMENT ON COLUMN common.requests.cluster_topvisor_id IS 'ID кластера запросов в TopVisor';
 
--- Уникальный составной индекс для предотвращения дубликатов
-CREATE UNIQUE INDEX IF NOT EXISTS idx_positions_unique 
-    ON topvisor.positions (request, event_date, project_engine_id);
+-- Индексы для быстрого поиска
+CREATE INDEX IF NOT EXISTS idx_requests_cluster 
+    ON common.requests(cluster_topvisor_id);
 
--- Индексы для оптимизации запросов
-CREATE INDEX IF NOT EXISTS idx_positions_event_date 
-    ON topvisor.positions (event_date);
+CREATE INDEX IF NOT EXISTS idx_requests_request_id 
+    ON common.requests(request_id);
 
-CREATE INDEX IF NOT EXISTS idx_positions_request_date 
-    ON topvisor.positions (request, event_date);
+-- Добавление колонки cluster_topvisor_id в topvisor.positions
+ALTER TABLE topvisor.positions 
+ADD COLUMN IF NOT EXISTS cluster_topvisor_id INTEGER;
 
-CREATE INDEX IF NOT EXISTS idx_positions_project_engine 
-    ON topvisor.positions (project_engine_id, event_date);
+COMMENT ON COLUMN topvisor.positions.cluster_topvisor_id IS 'ID кластера запросов из справочника common.requests';
 
-CREATE INDEX IF NOT EXISTS idx_positions_relevant_url_id 
-    ON topvisor.positions (relevant_url_id);
+-- Индекс для ускорения JOIN-ов
+CREATE INDEX IF NOT EXISTS idx_positions_cluster_topvisor 
+    ON topvisor.positions(cluster_topvisor_id);
 
--- =====================================================
--- УДАЛИТЕ ИЛИ НЕ СОЗДАВАЙТЕ ПРЕДСТАВЛЕНИЯ
--- =====================================================
+-- Создание функции триггера
+CREATE OR REPLACE FUNCTION set_topvisor_cluster_id()
+RETURNS TRIGGER AS $$
+BEGIN
+    SELECT cluster_topvisor_id 
+    INTO NEW.cluster_topvisor_id
+    FROM common.requests
+    WHERE request = NEW.request
+    LIMIT 1;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Создание триггера
+DROP TRIGGER IF EXISTS before_insert_topvisor_positions ON topvisor.positions;
+
+CREATE TRIGGER before_insert_topvisor_positions
+BEFORE INSERT ON topvisor.positions
+FOR EACH ROW
+EXECUTE FUNCTION set_topvisor_cluster_id();
+
+COMMIT;
