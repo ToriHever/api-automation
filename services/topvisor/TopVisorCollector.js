@@ -5,19 +5,19 @@ const crypto = require('crypto');
 class TopVisorCollector extends BaseCollector {
     constructor() {
         super('topvisor');
-        // Удаляем this.config = this.getConfig(); - не нужен для TopVisor
         this.projectEngineCache = new Map();
         this.urlMappingCache = new Map();
         
-        // Проверяем обязательные переменные окружения
         if (!process.env.TOPVISOR_API_KEY || !process.env.TOPVISOR_USER_ID) {
             throw new Error('TOPVISOR_API_KEY and TOPVISOR_USER_ID environment variables are required');
         }
     }
     
+    cleanUrl(url) {
+        if (!url || typeof url !== 'string') return '';
+        return url.split('#:~:text')[0].trim();
+    }
     
-    
-    // МЕТОДЫ ДЛЯ РАБОТЫ СО СПРАВОЧНИКОМ
     async loadProjectEngineMap() {
         try {
             const result = await this.dbManager.query(
@@ -27,603 +27,370 @@ class TopVisorCollector extends BaseCollector {
             );
             
             this.projectEngineCache.clear();
-            
             for (const row of result.rows) {
-                const cacheKey = `${row.topvisor_project_id}:${row.topvisor_region_id}`;
-                this.projectEngineCache.set(cacheKey, row.project_engine_id);
+                const key = `${row.topvisor_project_id}:${row.topvisor_region_id}`;
+                this.projectEngineCache.set(key, row.project_engine_id);
             }
             
-            this.logger.info(`Загружено ${this.projectEngineCache.size} маппингов из справочника`);
+            this.logger.info(`Загружено ${this.projectEngineCache.size} маппингов`);
         } catch (error) {
             this.logger.error('Ошибка загрузки маппинга проектов', error);
         }
     }
-    
-    
 
     async getProjectEngineId(topvisorProjectId, topvisorRegionId) {
-        const cacheKey = `${topvisorProjectId}:${topvisorRegionId}`;
-        
-        if (this.projectEngineCache.has(cacheKey)) {
-            return this.projectEngineCache.get(cacheKey);
+        const key = `${topvisorProjectId}:${topvisorRegionId}`;
+        if (this.projectEngineCache.has(key)) {
+            return this.projectEngineCache.get(key);
         }
         
-        try {
-            const result = await this.dbManager.query(
-                `SELECT id FROM common.dim_projects_engines 
-                 WHERE topvisor_project_id = $1 AND topvisor_region_id = $2`,
-                [topvisorProjectId, topvisorRegionId]
-            );
-            
-            if (result.rows.length > 0) {
-                const id = result.rows[0].id;
-                this.projectEngineCache.set(cacheKey, id);
-                return id;
-            }
-            
-            throw new Error(`Не найден маппинг для topvisor_project_id=${topvisorProjectId}, topvisor_region_id=${topvisorRegionId}`);
-            
-        } catch (error) {
-            this.logger.error(`Ошибка получения project_engine_id для ${cacheKey}`, error);
-            throw error;
+        const result = await this.dbManager.query(
+            `SELECT id FROM common.dim_projects_engines 
+             WHERE topvisor_project_id = $1 AND topvisor_region_id = $2`,
+            [topvisorProjectId, topvisorRegionId]
+        );
+        
+        if (result.rows.length > 0) {
+            const id = result.rows[0].id;
+            this.projectEngineCache.set(key, id);
+            return id;
         }
+        
+        throw new Error(`Не найден маппинг для ${key}`);
     }
     
-    // Метод для нормализации URL
-async normalizeUrl(url) {
-    if (!url || url.trim() === '') {
-        return 0;
-    }
+    /**
+     * МАССОВАЯ нормализация URL
+     */
+    async normalizeBulkUrls(urls) {
+        const cleanedUrls = urls.map(url => this.cleanUrl(url || '')).filter(url => url !== '');
+        if (cleanedUrls.length === 0) return new Map();
 
-    // Проверяем кэш
-   if (this.urlMappingCache.has(url)) {
-        const cachedValue = this.urlMappingCache.get(url);
-        // Если в кэше пустая строка, заменяем на 0
-        return cachedValue || 0;
-    }
+        const uniqueUrls = [...new Set(cleanedUrls)];
+        this.logger.info(`Нормализация ${uniqueUrls.length} URL`);
 
-    try {
-        // Вставляем URL в справочник (или получаем существующий ID)
-        const result = await this.dbManager.query(
-            `INSERT INTO common.site_map (url) 
-             VALUES ($1) 
-             ON CONFLICT (url) DO UPDATE SET url = EXCLUDED.url
-             RETURNING id`,
-            [url]
-        );
+        const values = uniqueUrls.map((url, i) => `($${i + 1})`).join(',');
+        const query = `
+            INSERT INTO common.site_map (url) 
+            VALUES ${values}
+            ON CONFLICT (url) DO UPDATE SET url = EXCLUDED.url
+            RETURNING id, url
+        `;
         
-        const urlId = result.rows[0].id || 0;
-        this.urlMappingCache.set(url, urlId);
-        return urlId;
+        const result = await this.dbManager.query(query, uniqueUrls);
         
-    } catch (error) {
-        this.logger.error(`Ошибка нормализации URL:  ${url}`, error);
-        return 0;
-    }
-}
-
-async preloadUrlMappings() {
-    try {
-        const result = await this.dbManager.query(
-            `SELECT id, url FROM common.site_map`
-        );
-        
-        this.urlMappingCache.clear();
-        
+        const urlMapping = new Map();
         for (const row of result.rows) {
+            urlMapping.set(row.url, row.id);
             this.urlMappingCache.set(row.url, row.id);
         }
         
-        this.logger.info(`Загружено ${this.urlMappingCache.size} URL маппингов в кэш`);
-    } catch (error) {
-        this.logger.warn(`Не удалось загрузить URL маппинги: ${error.message}`);
+        return urlMapping;
     }
-}
 
-    // ИСПРАВЛЕННЫЙ метод getSnippetId
-    async getSnippetId(snippet) {
-        // Обработка пустых сниппетов и разделителя TopVisor
-        if (!snippet || snippet.trim() === '' || snippet === '|||') {
-            // Возвращаем 1 для пустых сниппетов (ID записи с |||)
-            // Или можно вернуть null если не хотите отслеживать пустые
-            return 1;
-        }
-
-        const snippetHash = crypto.createHash('md5').update(snippet).digest('hex');
-
+    async preloadUrlMappings() {
         try {
-            // Ищем сниппет по хэшу
-            const result = await this.dbManager.query(
-                `SELECT id FROM topvisor.dim_snippets WHERE snippet_hash = $1`,
-                [snippetHash]
-            );
-
-            if (result.rows.length > 0) {
-                const id = result.rows[0].id;
-                await this.dbManager.query(
-                    `UPDATE topvisor.dim_snippets 
-                     SET uses = uses + 1, updated_at = CURRENT_TIMESTAMP 
-                     WHERE id = $1`,
-                    [id]
-                );
-                return id;
-            } else {
-                // Вставляем новую запись с обработкой конфликтов
-                const insertResult = await this.dbManager.query(
-                    `INSERT INTO topvisor.dim_snippets (snippet, snippet_hash) 
-                     VALUES ($1, $2) 
-                     ON CONFLICT (snippet_hash) DO UPDATE 
-                     SET uses = dim_snippets.uses + 1, updated_at = CURRENT_TIMESTAMP
-                     RETURNING id`,
-                    [snippet, snippetHash]
-                );
-                return insertResult.rows[0].id;
+            const result = await this.dbManager.query(`SELECT id, url FROM common.site_map`);
+            this.urlMappingCache.clear();
+            for (const row of result.rows) {
+                this.urlMappingCache.set(row.url, row.id);
             }
+            this.logger.info(`Загружено ${this.urlMappingCache.size} URL в кэш`);
         } catch (error) {
-            this.logger.error(`Ошибка обработки сниппета`, {
-                error: error.message,
-                snippetLength: snippet?.length,
-                snippetStart: snippet?.substring(0, 50)
-            });
-            return 1; // Возвращаем ID пустого сниппета при ошибке
+            this.logger.warn(`Не удалось загрузить URL: ${error.message}`);
         }
+    }
+
+    /**
+     * МАССОВАЯ обработка сниппетов
+     */
+    async processBulkSnippets(snippets) {
+        const uniqueSnippets = new Map();
+        
+        for (const snippet of snippets) {
+            if (!snippet || snippet.trim() === '' || snippet === '|||') continue;
+            const hash = crypto.createHash('md5').update(snippet).digest('hex');
+            uniqueSnippets.set(hash, snippet);
+        }
+        
+        if (uniqueSnippets.size === 0) return new Map();
+
+        this.logger.info(`Обработка ${uniqueSnippets.size} сниппетов`);
+
+        const values = [];
+        const params = [];
+        let idx = 1;
+        
+        for (const [hash, snippet] of uniqueSnippets) {
+            values.push(`($${idx}, $${idx + 1})`);
+            params.push(snippet, hash);
+            idx += 2;
+        }
+        
+        const query = `
+            INSERT INTO topvisor.dim_snippets (snippet, snippet_hash) 
+            VALUES ${values.join(',')}
+            ON CONFLICT (snippet_hash) DO UPDATE 
+            SET uses = dim_snippets.uses + 1, updated_at = CURRENT_TIMESTAMP
+            RETURNING id, snippet_hash
+        `;
+        
+        const result = await this.dbManager.query(query, params);
+        
+        const snippetMap = new Map();
+        for (const row of result.rows) {
+            snippetMap.set(row.snippet_hash, row.id);
+        }
+        
+        return snippetMap;
     }
 
     async checkApiConnection() {
         this.logger.info('Проверка подключения к TopVisor API');
+        await axios.post(process.env.TOPVISOR_API_URL, { "show": "info" }, {
+            headers: {
+                Authorization: `Bearer ${process.env.TOPVISOR_API_KEY}`,
+                "User-Id": process.env.TOPVISOR_USER_ID,
+                "Content-Type": "application/json"
+            },
+            timeout: 10000
+        });
+        this.logger.info('TopVisor API подключение успешно');
+        return true;
+    }
+
+    async fetchData(startDate, endDate) {
+        if (!startDate) {
+            const today = new Date();
+            startDate = today.toISOString().split('T')[0];
+            endDate = startDate;
+        }
+
+        this.logger.info(`Получение данных: ${startDate} - ${endDate}`);
+        await this.preloadUrlMappings();
+
+        const existingRecords = await this.checkExistingData(startDate);
+        if (existingRecords > 0 && !process.env.FORCE_OVERRIDE) {
+            this.logger.warn(`Данные за ${startDate} существуют (${existingRecords})`);
+            this.stats.warnings.push(`Данные существуют`);
+            return [];
+        }
+
+        if (existingRecords > 0 && process.env.FORCE_OVERRIDE === 'true') {
+            await this.dbManager.query('DELETE FROM topvisor.positions WHERE event_date = $1', [startDate]);
+        }
+
+        const apiRequests = this.buildApiRequests(startDate, endDate);
+        const batches = this.chunkArray(apiRequests, 4);
+        const allData = [];
+
+        for (let i = 0; i < batches.length; i++) {
+            this.logger.info(`Батч ${i + 1}/${batches.length}`);
+            
+            const promises = batches[i].map(cfg => 
+                this.makeApiRequest(cfg)
+                    .then(data => ({ success: true, data, cfg }))
+                    .catch(error => ({ success: false, error, cfg }))
+            );
+
+            const results = await Promise.all(promises);
+
+            for (const res of results) {
+                if (res.success && res.data.result?.keywords) {
+                    const data = await this.transformApiData(res.data, res.cfg.name);
+                    allData.push(...data);
+                } else if (!res.success) {
+                    this.logger.error(`Ошибка "${res.cfg.name}"`, res.error);
+                    this.stats.errors++;
+                }
+            }
+
+            if (i < batches.length - 1) await this.delay(5000);
+        }
+
+        return allData;
+    }
+
+    /**
+     * ОПТИМИЗИРОВАННАЯ массовая запись
+     */
+    async processAndSaveData(data, forceOverride = false) {
+        if (!data || data.length === 0) {
+            this.logger.warn('Нет данных для сохранения');
+            return;
+        }
+
+        this.logger.info(`Массовая обработка ${data.length} записей`);
+
+        // 1. Массовая нормализация URL
+        const allUrls = data.map(r => r.relevant_url).filter(Boolean);
+        const urlMapping = await this.normalizeBulkUrls(allUrls);
+
+        // 2. Массовая обработка сниппетов
+        const allSnippets = data.map(r => r.snippet).filter(Boolean);
+        const snippetHashes = new Map();
+        allSnippets.forEach(snippet => {
+            if (snippet && snippet.trim() !== '' && snippet !== '|||') {
+                const hash = crypto.createHash('md5').update(snippet).digest('hex');
+                snippetHashes.set(snippet, hash);
+            }
+        });
         
-        try {
-            const response = await axios.post(
-                process.env.TOPVISOR_API_URL,
-                { "show": "info" },
-                {
+        const snippetMapping = await this.processBulkSnippets(allSnippets);
+
+        // 3. Подготовка записей
+        const records = data.map(r => {
+            const cleanUrl = this.cleanUrl(r.relevant_url || '');
+            const urlId = urlMapping.get(cleanUrl) || 0;
+            
+            let snippetId = 1;
+            if (r.snippet && r.snippet.trim() !== '' && r.snippet !== '|||') {
+                const hash = snippetHashes.get(r.snippet);
+                snippetId = hash ? snippetMapping.get(hash) || 1 : 1;
+            }
+            
+            return {
+                request: r.request,
+                event_date: r.event_date,
+                position: r.position,
+                relevant_url_id: urlId,
+                snippet_id: snippetId,
+                project_engine_id: r.project_engine_id,
+                cluster_topvisor_id: r.cluster_topvisor_id || null
+            };
+        });
+
+        // 4. Массовая вставка
+        await this.bulkInsertRecords(records, forceOverride);
+
+        this.stats.processed = records.length;
+        this.stats.inserted = records.length;
+        this.logger.info(`✅ Вставлено: ${records.length}`);
+    }
+
+    /**
+     * BULK INSERT в БД
+     */
+    async bulkInsertRecords(records, forceOverride = false) {
+        const chunkSize = 1000;
+        const chunks = this.chunkArray(records, chunkSize);
+
+        this.logger.info(`Bulk insert: ${chunks.length} чанков`);
+
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            
+            const values = [];
+            const params = [];
+            let idx = 1;
+
+            for (const r of chunk) {
+                values.push(`($${idx}, $${idx+1}, $${idx+2}, $${idx+3}, $${idx+4}, $${idx+5}, $${idx+6})`);
+                params.push(r.request, r.event_date, r.position, r.relevant_url_id, 
+                           r.snippet_id, r.project_engine_id, r.cluster_topvisor_id);
+                idx += 7;
+            }
+
+            const conflict = forceOverride 
+                ? `ON CONFLICT (request, event_date, project_engine_id) 
+                   DO UPDATE SET position = EXCLUDED.position, relevant_url_id = EXCLUDED.relevant_url_id,
+                                 snippet_id = EXCLUDED.snippet_id, cluster_topvisor_id = EXCLUDED.cluster_topvisor_id`
+                : `ON CONFLICT (request, event_date, project_engine_id) DO NOTHING`;
+
+            const query = `
+                INSERT INTO topvisor.positions 
+                (request, event_date, position, relevant_url_id, snippet_id, project_engine_id, cluster_topvisor_id)
+                VALUES ${values.join(',')} ${conflict}
+            `;
+
+            await this.dbManager.query(query, params);
+            this.logger.info(`Чанк ${i+1}/${chunks.length}: ${chunk.length} записей`);
+        }
+    }
+    
+    buildApiRequests(startDate, endDate) {
+        return [
+            { name: "RU Яндекс", body: { project_id: "7063822", regions_indexes: ["5"], date1: startDate, date2: endDate, positions_fields: ["relevant_url", "position", "snippet"], show_groups: true }},
+            { name: "RU Google", body: { project_id: "7063822", regions_indexes: ["7"], date1: startDate, date2: endDate, positions_fields: ["relevant_url", "position", "snippet"], show_groups: true }},
+            { name: "EN Google", body: { project_id: "7063718", regions_indexes: ["159"], date1: startDate, date2: endDate, positions_fields: ["relevant_url", "position", "snippet"], show_groups: true }},
+            { name: "EN Bing", body: { project_id: "7063718", regions_indexes: ["701"], date1: startDate, date2: endDate, positions_fields: ["relevant_url", "position", "snippet"], show_groups: true }},
+            { name: "Блог Яндекс", body: { project_id: "7093082", regions_indexes: ["5"], date1: startDate, date2: endDate, positions_fields: ["relevant_url", "position"], show_groups: true }},
+            { name: "Блог Google", body: { project_id: "7093082", regions_indexes: ["7"], date1: startDate, date2: endDate, positions_fields: ["relevant_url", "position"], show_groups: true }},
+            { name: "Термины Яндекс", body: { project_id: "11430357", regions_indexes: ["5"], date1: startDate, date2: endDate, positions_fields: ["relevant_url", "position"], show_groups: true }},
+            { name: "Термины Google", body: { project_id: "11430357", regions_indexes: ["7"], date1: startDate, date2: endDate, positions_fields: ["relevant_url", "position"], show_groups: true }}
+        ];
+    }
+
+    async makeApiRequest(cfg, retries = 3) {
+        for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+                const response = await axios.post(process.env.TOPVISOR_API_URL, cfg.body, {
                     headers: {
                         Authorization: `Bearer ${process.env.TOPVISOR_API_KEY}`,
                         "User-Id": process.env.TOPVISOR_USER_ID,
                         "Content-Type": "application/json"
                     },
-                    timeout: 10000
-                }
-            );
-
-            this.logger.info('TopVisor API подключение успешно');
-            return true;
-        } catch (error) {
-            this.logger.error('Ошибка подключения к TopVisor API', error);
-            throw new Error(`TopVisor API недоступен: ${error.message}`);
-        }
-    }
-
-    async fetchData(startDate, endDate) {
-    // Если даты не переданы, используем СЕГОДНЯШНИЙ день
-    if (!startDate) {
-        const today = new Date();
-        startDate = today.toISOString().split('T')[0];
-        endDate = startDate;
-    }
-
-    this.logger.info(`Получение данных за период: ${startDate} - ${endDate}`);
-
-    // Загружаем кэш URL перед началом работы
-    await this.preloadUrlMappings();
-
-    const apiRequests = this.buildApiRequests(startDate, endDate);
-        
-        const existingRecords = await this.checkExistingData(startDate);
-        if (existingRecords > 0 && !process.env.FORCE_OVERRIDE) {
-            this.logger.warn(`Обнаружено ${existingRecords} записей за ${startDate}`);
-            this.stats.warnings.push(`Данные за ${startDate} уже существуют (${existingRecords} записей)`);
-            return [];
-        }
-
-        if (existingRecords > 0 && process.env.FORCE_OVERRIDE === 'true') {
-            this.logger.info(`Принудительная перезапись: удаление ${existingRecords} записей за ${startDate}`);
-            await this.dbManager.query('DELETE FROM topvisor.positions WHERE event_date = $1', [startDate]);
-        }
-
-        const requestBatches = this.chunkArray(apiRequests, 4);
-        const allData = [];
-
-        for (let batchIndex = 0; batchIndex < requestBatches.length; batchIndex++) {
-            const batch = requestBatches[batchIndex];
-            this.logger.info(`Обработка батча ${batchIndex + 1}/${requestBatches.length} (${batch.length} запросов)`);
-
-            const promises = batch.map(requestConfig => 
-                this.makeApiRequest(requestConfig)
-                    .then(data => ({ success: true, data, requestConfig }))
-                    .catch(error => ({ success: false, error, requestConfig }))
-            );
-
-            const results = await Promise.all(promises);
-
-            for (const result of results) {
-                if (result.success) {
-                    if (result.data.result && result.data.result.keywords) {
-                       const transformedData = await this.transformApiData(result.data, result.requestConfig.name);
-                        allData.push(...transformedData);
-                    }
-                } else {
-                    this.logger.error(`Не удалось выполнить запрос "${result.requestConfig.name}"`, result.error);
-                    this.stats.errors++;
-                }
-            }
-
-            if (batchIndex < requestBatches.length - 1) {
-                this.logger.info("Пауза 5 секунд между батчами...");
-                await this.delay(5000);
-            }
-        }
-
-        this.logger.info(`Получено ${allData.length} записей из API`);
-        return allData;
-    }
-
-    // ИСПРАВЛЕННЫЙ метод saveData
-    async saveData(records) {
-        let saved = 0;
-        let errors = 0;
-        const errorDetails = [];
-
-        for (const record of records) {
-            try {
-                const exists = await this.recordExists(record);
-                
-                if (exists) {
-                    await this.updateRecord(record);
-                } else {
-                    await this.insertRecord(record);
-                }
-
-                saved++;
-            } catch (error) {
-                errors++;
-                errorDetails.push({
-                    request: record.request,
-                    date: record.event_date,
-                    snippet_id: record.snippet_id,
-                    error: error.message
+                    timeout: 30000
                 });
-                
-                if (errorDetails.length <= 10) {
-                    this.logger.error(`Ошибка сохранения записи:`, {
-                        record: this.getRecordKey(record),
-                        error: error.message,
-                        snippet_id: record.snippet_id
-                    });
-                }
-            }
-        }
-
-        if (errors > 0) {
-            this.logger.warn(`Всего ошибок: ${errors}. Первые 10:`, errorDetails.slice(0, 10));
-        }
-
-        return { saved, errors };
-    }
-    
-    buildApiRequests(startDate, endDate) {
-        return [
-            // DDG-RU - СО СНИППЕТАМИ
-            {
-                name: "Позиции: Данные по RU сайту для Яндекс",
-                body: {
-                    "project_id": "7063822",
-                    "regions_indexes": ["5"],
-                    "date1": startDate,
-                    "date2": endDate,
-                    "positions_fields": ["relevant_url", "position", "snippet"],
-                    "show_groups": true
-                }
-            },
-            {
-                name: "Позиции: Данные по RU сайту для Google",
-                body: {
-                    "project_id": "7063822",
-                    "regions_indexes": ["7"],
-                    "date1": startDate,
-                    "date2": endDate,
-                    "positions_fields": ["relevant_url", "position", "snippet"],
-                    "show_groups": true
-                }
-            },
-            
-            // DDG-EN - СО СНИППЕТАМИ
-            {
-                name: "Позиции: Данные по EN сайту для Google",
-                body: {
-                    "project_id": "7063718",
-                    "regions_indexes": ["159"],
-                    "date1": startDate,
-                    "date2": endDate,
-                    "positions_fields": ["relevant_url", "position", "snippet"],
-                    "show_groups": true
-                }
-            },
-            {
-                name: "Позиции: Данные по EN сайту для Bing",
-                body: {
-                    "project_id": "7063718",
-                    "regions_indexes": ["701"],
-                    "date1": startDate,
-                    "date2": endDate,
-                    "positions_fields": ["relevant_url", "position", "snippet"],
-                    "show_groups": true
-                }
-            },
-            
-            // БЛОГ - БЕЗ СНИППЕТОВ
-            {
-                name: "Позиции: Данные по Блог для Яндекс",
-                body: {
-                    "project_id": "7093082",
-                    "regions_indexes": ["5"],
-                    "date1": startDate,
-                    "date2": endDate,
-                    "positions_fields": ["relevant_url", "position"],  // Убрали snippet
-                    "show_groups": true
-                }
-            },
-            {
-                name: "Позиции: Данные по Блог для Google",
-                body: {
-                    "project_id": "7093082",
-                    "regions_indexes": ["7"],
-                    "date1": startDate,
-                    "date2": endDate,
-                    "positions_fields": ["relevant_url", "position"],  // Убрали snippet
-                    "show_groups": true
-                }
-            },
-            
-            // ТЕРМИНЫ - БЕЗ СНИППЕТОВ
-            {
-                name: "Позиции: Данные по Термины для Яндекс",
-                body: {
-                    "project_id": "11430357",
-                    "regions_indexes": ["5"],
-                    "date1": startDate,
-                    "date2": endDate,
-                    "positions_fields": ["relevant_url", "position"],  // Убрали snippet
-                    "show_groups": true
-                }
-            },
-            {
-                name: "Позиции: Данные по Термины для Google",
-                body: {
-                    "project_id": "11430357",
-                    "regions_indexes": ["7"],
-                    "date1": startDate,
-                    "date2": endDate,
-                    "positions_fields": ["relevant_url", "position"],  // Убрали snippet
-                    "show_groups": true
-                }
-            }
-        ];
-    }
-
-    async makeApiRequest(requestConfig, retries = 3) {
-        for (let attempt = 1; attempt <= retries; attempt++) {
-            try {
-                this.logger.info(`Выполнение запроса: ${requestConfig.name} (попытка ${attempt})`);
-                
-                const response = await axios.post(
-                    process.env.TOPVISOR_API_URL,
-                    requestConfig.body,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${process.env.TOPVISOR_API_KEY}`,
-                            "User-Id": process.env.TOPVISOR_USER_ID,
-                            "Content-Type": "application/json"
-                        },
-                        timeout: 30000
-                    }
-                );
-
-                this.logger.info(`Запрос "${requestConfig.name}" выполнен успешно`);
                 return response.data;
-
             } catch (error) {
-                if (error.response?.status === 429) {
-                    this.logger.warn(`Превышен лимит API для "${requestConfig.name}". Попытка ${attempt}/${retries}`);
-                    if (attempt < retries) {
-                        const waitTime = attempt * 10000;
-                        this.logger.info(`Ожидание ${waitTime/1000} секунд перед повторной попыткой...`);
-                        await this.delay(waitTime);
-                        continue;
-                    }
+                if (error.response?.status === 429 && attempt < retries) {
+                    await this.delay(attempt * 10000);
+                    continue;
                 }
-                
-                if (attempt === retries) {
-                    this.logger.error(`Ошибка в запросе "${requestConfig.name}" после ${retries} попыток`, error);
-                    throw error;
-                }
-                
-                this.logger.warn(`Ошибка в запросе "${requestConfig.name}". Попытка ${attempt}/${retries}`, error);
+                if (attempt === retries) throw error;
                 await this.delay(5000);
             }
         }
     }
 
-    // ОЧИЩЕННЫЙ метод transformApiData (без дублирования)
     async transformApiData(data, requestName) {
-    const records = [];
-    
-    if (!data.result || !data.result.keywords) {
-        this.logger.warn(`API вернул пустой результат для "${requestName}"`);
+        const records = [];
+        if (!data.result?.keywords) return records;
+        if (this.projectEngineCache.size === 0) await this.loadProjectEngineMap();
+
+        for (const kw of data.result.keywords) {
+            if (!kw.positionsData) continue;
+
+            for (const key in kw.positionsData) {
+                const [date, projId, regId] = key.split(":");
+                const pos = kw.positionsData[key];
+                
+                let position = pos.position === "--" ? null : parseInt(pos.position, 10);
+                const engineId = await this.getProjectEngineId(projId, regId);
+                
+                records.push({
+                    request: kw.name,
+                    event_date: date,
+                    position,
+                    relevant_url: pos.relevant_url || '',
+                    snippet: pos.snippet,
+                    project_engine_id: engineId,
+                    cluster_topvisor_id: null
+                });
+            }
+        }
+
         return records;
     }
 
-    if (this.projectEngineCache.size === 0) {
-        await this.loadProjectEngineMap();
-    }
-
-    for (const keyword of data.result.keywords) {
-        const request = keyword.name;
-
-        if (!keyword.positionsData || Object.keys(keyword.positionsData).length === 0) {
-            continue;
-        }
-
-        for (const key in keyword.positionsData) {
-            const [event_date, topvisor_project_id, topvisor_region_id] = key.split(":");
-            const positionData = keyword.positionsData[key];
-            
-            let position = positionData.position;
-            let relevant_url_id = await this.normalizeUrl(positionData.relevant_url || '') || 0;
-            let snippet = positionData.snippet; // Может быть undefined
-            
-            // Обработка позиции
-            if (position === "--") {
-                position = null;
-            } else {
-                position = parseInt(position, 10);
-            }
-
-            try {
-                const project_engine_id = await this.getProjectEngineId(topvisor_project_id, topvisor_region_id);
-                
-                // Получаем snippet_id только если snippet есть
-                let snippet_id = null;
-                if (snippet !== undefined && snippet !== null) {
-                    snippet_id = await this.getSnippetId(snippet);
-                }
-                
-                records.push({
-                    request,
-                    event_date,
-                    position,
-                    relevant_url_id,
-                    project_engine_id,
-                    snippet_id
-                });
-                
-            } catch (error) {
-                // Теперь логируем полную информацию об ошибке
-                this.logger.error(`Ошибка при обработке записи:`, {
-                    key,
-                    topvisor_project_id,
-                    topvisor_region_id,
-                    request,
-                    error: error.message,
-                    stack: error.stack,
-                    timestamp: new Date().toISOString()
-                });
-                continue;
-            }
-        }
-    }
-
-    return records;
-}
-
-    async recordExists(record) {
-        try {
-            const result = await this.dbManager.query(
-                `SELECT id FROM topvisor.positions 
-                 WHERE request = $1 AND event_date = $2 AND project_engine_id = $3`,
-                [record.request, record.event_date, record.project_engine_id]
-            );
-            return result.rows.length > 0;
-        } catch (error) {
-            this.logger.error('Ошибка проверки существования записи', error);
-            return false;
-        }
-    }
-
-    // ИСПРАВЛЕННЫЙ метод insertRecord (БЕЗ колонки snippet)
-    async insertRecord(record) {
-    await this.dbManager.query(
-        `INSERT INTO topvisor.positions 
-         (request, event_date, position, relevant_url_id, snippet_id, project_engine_id, cluster_topvisor_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-            record.request,
-            record.event_date,
-            record.position,
-            record.relevant_url_id, // Теперь ID, а не URL
-            record.snippet_id,
-            record.project_engine_id,
-            record.cluster_topvisor_id
-        ]
-    );
-}
-
-    // ИСПРАВЛЕННЫЙ метод updateRecord (БЕЗ колонки snippet)
-async updateRecord(record) {
-    await this.dbManager.query(
-        `UPDATE topvisor.positions 
-         SET position = $4, relevant_url_id = $5, snippet_id = $6, cluster_topvisor_id = $7
-         WHERE request = $1 AND event_date = $2 AND project_engine_id = $3`,
-        [
-            record.request,
-            record.event_date,
-            record.project_engine_id,
-            record.position,
-            record.relevant_url_id, // Теперь ID, а не URL
-            record.snippet_id,
-            record.cluster_topvisor_id
-        ]
-    );
-}
-
-
     async checkExistingData(date) {
-        try {
-            const result = await this.dbManager.query(
-                'SELECT COUNT(*) FROM topvisor.positions WHERE event_date = $1',
-                [date]
-            );
-            return parseInt(result.rows[0].count, 10);
-        } catch (error) {
-            this.logger.warn(`Ошибка проверки существующих данных: ${error.message}`);
-            return 0;
-        }
+        const result = await this.dbManager.query(
+            'SELECT COUNT(*) FROM topvisor.positions WHERE event_date = $1', [date]
+        );
+        return parseInt(result.rows[0].count, 10);
     }
 
-    getRecordKey(record) {
-        return `${record.request}|${record.event_date}|${record.project_engine_id}`;
-    }
-
-    chunkArray(array, chunkSize) {
+    chunkArray(arr, size) {
         const chunks = [];
-        for (let i = 0; i < array.length; i += chunkSize) {
-            chunks.push(array.slice(i, i + chunkSize));
+        for (let i = 0; i < arr.length; i += size) {
+            chunks.push(arr.slice(i, i + size));
         }
         return chunks;
     }
 
     delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    async getStats(startDate, endDate) {
-        try {
-            const result = await this.dbManager.query(
-                `SELECT 
-                    COUNT(*) as total_records,
-                    COUNT(DISTINCT d.project_name) as projects_count,
-                    COUNT(DISTINCT d.search_engine) as search_engines_count,
-                    MIN(p.event_date) as first_date,
-                    MAX(p.event_date) as last_date
-                 FROM topvisor.positions p
-                 JOIN common.dim_projects_engines d ON p.project_engine_id = d.id
-                 WHERE p.event_date BETWEEN $1 AND $2`,
-                [startDate, endDate]
-            );
-
-            return {
-                service: this.serviceName,
-                period: { startDate, endDate },
-                ...result.rows[0]
-            };
-        } catch (error) {
-            this.logger.error('Ошибка получения статистики', error);
-            return {
-                service: this.serviceName,
-                period: { startDate, endDate },
-                total_records: 0
-            };
-        }
     }
 }
 
