@@ -1,43 +1,32 @@
 -- ============================================
--- WordStat Schema
+-- WordStat Schema (С ПРАВИЛЬНЫМ ТИПОМ DATE)
 -- ============================================
 
--- Создание схемы (если не существует)
 CREATE SCHEMA IF NOT EXISTS wordstat;
 
--- ============================================
--- Основная таблица с динамикой запросов
--- ============================================
+DROP TABLE IF EXISTS wordstat.tmp_dynamics CASCADE;
 
-CREATE TABLE IF NOT EXISTS wordstat.tmp_dynamics (
+CREATE TABLE wordstat.tmp_dynamics (
     id SERIAL PRIMARY KEY,
     request TEXT NOT NULL,
-    month VARCHAR(7) NOT NULL,  -- Формат: YYYY-MM
-    frequency INTEGER NOT NULL DEFAULT 0,
-    "group" TEXT DEFAULT 'Нет группы',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    month DATE NOT NULL,  -- ✅ Правильный тип DATE (будет хранить 2025-12-01)
+    frequency INTEGER NOT NULL DEFAULT 0,  -- ✅ INTEGER вместо SMALLINT (до 2.1 млрд)
+    "group" TEXT NOT NULL DEFAULT 'Нет группы',
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     
-    -- Уникальность по комбинации: запрос + месяц
     UNIQUE(request, month)
 );
 
-COMMENT ON TABLE wordstat.tmp_dynamics IS 'Временная таблица с динамикой частотности запросов Яндекс.Wordstat';
-COMMENT ON COLUMN wordstat.tmp_dynamics.request IS 'Поисковый запрос';
-COMMENT ON COLUMN wordstat.tmp_dynamics.month IS 'Месяц в формате YYYY-MM';
-COMMENT ON COLUMN wordstat.tmp_dynamics.frequency IS 'Частотность запроса за месяц';
-COMMENT ON COLUMN wordstat.tmp_dynamics."group" IS 'Группа запросов (пока "Нет группы")';
+COMMENT ON COLUMN wordstat.tmp_dynamics.month IS 'Месяц (первое число месяца, например 2025-12-01)';
 
--- Индексы для оптимизации запросов
-CREATE INDEX IF NOT EXISTS idx_tmp_dynamics_request ON wordstat.tmp_dynamics(request);
-CREATE INDEX IF NOT EXISTS idx_tmp_dynamics_month ON wordstat.tmp_dynamics(month);
-CREATE INDEX IF NOT EXISTS idx_tmp_dynamics_group ON wordstat.tmp_dynamics("group");
-CREATE INDEX IF NOT EXISTS idx_tmp_dynamics_request_month ON wordstat.tmp_dynamics(request, month);
+-- Индексы
+CREATE INDEX idx_tmp_dynamics_request ON wordstat.tmp_dynamics(request);
+CREATE INDEX idx_tmp_dynamics_month ON wordstat.tmp_dynamics(month);
+CREATE INDEX idx_tmp_dynamics_group ON wordstat.tmp_dynamics("group");
+CREATE INDEX idx_tmp_dynamics_request_month ON wordstat.tmp_dynamics(request, month);
 
--- ============================================
--- TRIGGERS: Автообновление updated_at
--- ============================================
-
+-- Триггер обновления
 CREATE OR REPLACE FUNCTION wordstat.update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -46,7 +35,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS update_wordstat_updated_at ON wordstat.tmp_dynamics;
 CREATE TRIGGER update_wordstat_updated_at
     BEFORE UPDATE ON wordstat.tmp_dynamics
     FOR EACH ROW
@@ -60,8 +48,8 @@ CREATE OR REPLACE VIEW wordstat.dynamics_summary AS
 SELECT 
     request,
     COUNT(*) as total_months,
-    SUM(frequency) as total_frequency,
-    AVG(frequency) as avg_frequency,
+    SUM(frequency) as total_frequency,  -- ✅ Теперь можно без ::INTEGER
+    ROUND(AVG(frequency), 2) as avg_frequency,
     MIN(frequency) as min_frequency,
     MAX(frequency) as max_frequency,
     MIN(month) as first_month,
@@ -71,62 +59,83 @@ FROM wordstat.tmp_dynamics
 GROUP BY request, "group"
 ORDER BY total_frequency DESC;
 
-COMMENT ON VIEW wordstat.dynamics_summary IS 'Агрегированная статистика по запросам';
-
 -- ============================================
--- VIEW: Динамика по месяцам
+-- VIEW: Динамика по месяцам (красиво форматированная)
 -- ============================================
 
 CREATE OR REPLACE VIEW wordstat.monthly_trends AS
 SELECT 
-    month,
+    TO_CHAR(month, 'YYYY-MM') as month_text,  -- ✅ Показываем как "2025-12"
+    month as month_date,  -- ✅ И как дату для сортировки
     COUNT(DISTINCT request) as unique_requests,
     SUM(frequency) as total_frequency,
-    AVG(frequency) as avg_frequency,
+    ROUND(AVG(frequency), 2) as avg_frequency,
     "group"
 FROM wordstat.tmp_dynamics
 GROUP BY month, "group"
 ORDER BY month DESC;
 
-COMMENT ON VIEW wordstat.monthly_trends IS 'Тренды частотности по месяцам';
+-- ============================================
+-- VIEW: С процентом изменения
+-- ============================================
+
+CREATE OR REPLACE VIEW wordstat.dynamics_with_change AS
+SELECT 
+    d.request,
+    TO_CHAR(d.month, 'YYYY-MM') as month,
+    d.frequency,
+    LAG(d.frequency) OVER (PARTITION BY d.request ORDER BY d.month) as prev_frequency,
+    d.frequency - LAG(d.frequency) OVER (PARTITION BY d.request ORDER BY d.month) as change,
+    ROUND(
+        ((d.frequency - LAG(d.frequency) OVER (PARTITION BY d.request ORDER BY d.month))::NUMERIC 
+        / NULLIF(LAG(d.frequency) OVER (PARTITION BY d.request ORDER BY d.month), 0) * 100), 
+        2
+    ) as change_percent,
+    d."group"
+FROM wordstat.tmp_dynamics d
+ORDER BY d.request, d.month DESC;
 
 -- ============================================
--- Функция для очистки старых данных
+-- Функция очистки (теперь работает с DATE)
 -- ============================================
 
 CREATE OR REPLACE FUNCTION wordstat.cleanup_old_data(months_to_keep INTEGER DEFAULT 24)
 RETURNS INTEGER AS $$
 DECLARE
     rows_deleted INTEGER;
-    cutoff_date TEXT;
+    cutoff_date DATE;
 BEGIN
-    -- Вычисляем дату отсечения
-    cutoff_date := TO_CHAR(CURRENT_DATE - INTERVAL '1 month' * months_to_keep, 'YYYY-MM');
+    cutoff_date := DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month' * months_to_keep)::DATE;
     
-    -- Удаляем старые данные
-    DELETE FROM wordstat.tmp_dynamics 
-    WHERE month < cutoff_date;
+    DELETE FROM wordstat.tmp_dynamics WHERE month < cutoff_date;
     
     GET DIAGNOSTICS rows_deleted = ROW_COUNT;
+    RAISE NOTICE 'Удалено % записей старше %', rows_deleted, TO_CHAR(cutoff_date, 'YYYY-MM');
     
     RETURN rows_deleted;
 END;
 $$ LANGUAGE plpgsql;
 
-COMMENT ON FUNCTION wordstat.cleanup_old_data IS 'Удаляет данные старше указанного количества месяцев';
-
 -- ============================================
--- Примеры использования
+-- Полезные запросы
 -- ============================================
 
--- Пример вставки данных:
--- INSERT INTO wordstat.tmp_dynamics (request, month, frequency, "group")
--- VALUES ('ddos защита', '2024-01', 12500, 'Нет группы')
--- ON CONFLICT (request, month) 
--- DO UPDATE SET frequency = EXCLUDED.frequency, updated_at = CURRENT_TIMESTAMP;
+-- Динамика за последние 12 месяцев:
+-- SELECT 
+--     TO_CHAR(month, 'YYYY-MM') as month,
+--     request,
+--     frequency
+-- FROM wordstat.tmp_dynamics
+-- WHERE month >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL '12 months')
+-- ORDER BY request, month DESC;
 
--- Пример запроса статистики:
--- SELECT * FROM wordstat.dynamics_summary WHERE request LIKE '%ddos%';
+-- Топ-10 запросов текущего месяца:
+-- SELECT request, frequency
+-- FROM wordstat.tmp_dynamics
+-- WHERE month = DATE_TRUNC('month', CURRENT_DATE)
+-- ORDER BY frequency DESC LIMIT 10;
 
--- Пример очистки старых данных (старше 2 лет):
--- SELECT wordstat.cleanup_old_data(24);
+-- Рост/падение:
+-- SELECT * FROM wordstat.dynamics_with_change
+-- WHERE prev_frequency IS NOT NULL
+-- ORDER BY change_percent DESC LIMIT 20;

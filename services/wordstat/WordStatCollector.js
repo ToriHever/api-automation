@@ -5,12 +5,13 @@ const axios = require('axios');
 class WordStatCollector extends BaseCollector {
     constructor() {
         super('wordstat');
-        this.apiUrl = process.env.WORDSTAT_API_URL_DYN || 'https://api.wordstat.yandex.net/v1/dynamics';
-        this.apiToken = process.env.WORDSTAT_API_KEY;
-        this.batchSize = 10; // WordStat позволяет до 10 одновременных запросов
+        // ✅ Правильный URL и токен (как в рабочем скрипте)
+        this.apiUrl = 'https://api.wordstat.yandex.net/v1/dynamics';
+        this.apiToken = process.env.WORDSTAT_API_TOKEN; // ✅ Изменено с WORDSTAT_API_KEY
+        this.batchSize = 10;
         
         if (!this.apiToken) {
-            throw new Error('WORDSTAT_API_KEY environment variable is required');
+            throw new Error('WORDSTAT_API_TOKEN environment variable is required');
         }
     }
 
@@ -21,14 +22,16 @@ class WordStatCollector extends BaseCollector {
         this.logger.info('Проверка подключения к WordStat API');
         
         try {
-            // Тестовый запрос с простым словом
+            // ✅ Тестовый запрос за последний полный месяц (как в вашем рабочем скрипте)
+            const testPeriod = this.calculatePreviousMonthPeriod();
+            
             const response = await axios.post(
                 this.apiUrl,
                 {
                     phrase: 'тест',
                     period: 'monthly',
-                    fromDate: this.getLastMonthDate(),
-                    toDate: this.getLastMonthDate()
+                    fromDate: testPeriod.actualStartDate,
+                    toDate: testPeriod.actualEndDate
                 },
                 {
                     headers: {
@@ -93,7 +96,7 @@ class WordStatCollector extends BaseCollector {
         // Первое число предыдущего месяца
         const firstDay = new Date(previousMonth.getFullYear(), previousMonth.getMonth(), 1);
         
-        // Последнее число предыдущего месяца (переходим к следующему месяцу и отнимаем 1 день)
+        // Последнее число предыдущего месяца
         const lastDay = new Date(previousMonth.getFullYear(), previousMonth.getMonth() + 1, 0);
         
         const actualStartDate = this.formatDate(firstDay);
@@ -268,12 +271,15 @@ class WordStatCollector extends BaseCollector {
             const { phrase, monthlyData } = result;
 
             // Создаем записи для каждого месяца
-            Object.keys(monthlyData).forEach(month => {
+            Object.keys(monthlyData).forEach(monthStr => {
+                // ✅ Преобразуем "2025-12" в "2025-12-01" для DATE типа
+                const monthDate = `${monthStr}-01`;
+                
                 records.push({
                     request: phrase,
-                    month: month,
-                    frequency: monthlyData[month],
-                    group: 'Нет группы' // Временное значение, будет обновлено позже
+                    month: monthDate,  // ✅ Теперь полная дата
+                    frequency: monthlyData[monthStr],
+                    group: 'Нет группы'
                 });
             });
         }
@@ -336,15 +342,6 @@ class WordStatCollector extends BaseCollector {
     }
 
     /**
-     * Получение даты последнего месяца в формате YYYY-MM-DD
-     */
-    getLastMonthDate() {
-        const date = new Date();
-        date.setMonth(date.getMonth() - 1);
-        return date.toISOString().split('T')[0];
-    }
-
-    /**
      * Статистика по собранным данным
      */
     async getStats(startDate, endDate) {
@@ -354,7 +351,7 @@ class WordStatCollector extends BaseCollector {
                     COUNT(*) as total_records,
                     COUNT(DISTINCT request) as unique_requests,
                     COUNT(DISTINCT month) as unique_months,
-                    SUM(frequency) as total_frequency,
+                    SUM(frequency::INTEGER) as total_frequency,
                     MIN(month) as first_month,
                     MAX(month) as last_month
                  FROM wordstat.tmp_dynamics
