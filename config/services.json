@@ -11,12 +11,12 @@
   },
   "wordstat": {
     "enabled": true,
-    "schedule": "0 9 * * *",
+    "schedule": "0 9 1 * *",
     "priority": 2,
     "timeout": 300000,
     "retries": 2,
-    "dateOffset": -31,
-    "description": "Яндекс.Wordstat частотность запросов",
+    "dateOffset": 0,
+    "description": "Яндекс.Wordstat частотность запросов. Запускается 1-го числа каждого месяца, собирает данные за предыдущий месяц",
     "env_prefix": "WORDSTAT_"
   },
   "clarity": {

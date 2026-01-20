@@ -1,0 +1,15 @@
+{
+  "apiUrl": "https://api.wordstat.yandex.net/v1/dynamics",
+  "batchSize": 10,
+  "requestTimeout": 30000,
+  "maxRetries": 3,
+  "retryDelay": 2000,
+  "rateLimitDelay": 1000,
+  "keywordFiles": {
+    "dynamics": "keywords/dynamics_keywords.txt",
+    "top": "keywords/top_keywords.txt"
+  },
+  "defaultGroup": "Нет группы",
+  "autoCalculatePeriod": true,
+  "description": "Яндекс.Wordstat - сбор динамики частотности запросов за предыдущий полный месяц"
+}
