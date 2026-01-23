@@ -200,92 +200,97 @@ class WordStatCollector extends BaseCollector {
     /**
      * Получение динамики для одного ключевого слова
      */
-    async getWordstatDynamics(phrase, fromDate, toDate, index, total) {
-        const requestBody = {
-            phrase: phrase,
-            period: 'monthly',
-            fromDate: fromDate,
-            toDate: toDate
-        };
+   async getWordstatDynamics(phrase, fromDate, toDate, index, total) {
+    const requestBody = {
+        phrase: phrase,
+        period: 'monthly',
+        fromDate: fromDate,
+        toDate: toDate
+    };
 
-        try {
-            const response = await axios.post(
-                this.apiUrl,
-                requestBody,
-                {
-                    headers: {
-                        'Content-Type': 'application/json;charset=utf-8',
-                        'Authorization': `Bearer ${this.apiToken}`
-                    },
-                    timeout: 30000
-                }
-            );
+    try {
+        const response = await axios.post(
+            this.apiUrl,
+            requestBody,
+            {
+                headers: {
+                    'Content-Type': 'application/json;charset=utf-8',
+                    'Authorization': `Bearer ${this.apiToken}`
+                },
+                timeout: 30000
+            }
+        );
 
-            if (response.data && response.data.dynamics) {
-                const dynamics = response.data.dynamics;
+        if (response.data && response.data.dynamics) {
+            const dynamics = response.data.dynamics;
+            
+            // ✅ ИСПРАВЛЕНО: Сохраняем оригинальную дату из API
+            const monthlyData = {};
+            let totalCount = 0;
+
+            dynamics.forEach(item => {
+                // item.date уже в формате "YYYY-MM-DD" или "YYYY-MM"
+                let monthKey = item.date;
                 
-                // Преобразуем массив dynamics в объект с ключами по месяцам
-                const monthlyData = {};
-                let totalCount = 0;
+                // Если пришло только "YYYY-MM", добавляем "-01"
+                if (monthKey.length === 7) { // формат "YYYY-MM"
+                    monthKey = `${monthKey}-01`;
+                }
+                
+                monthlyData[monthKey] = item.count;
+                totalCount += item.count;
+            });
 
-                dynamics.forEach(item => {
-                    const date = new Date(item.date);
-                    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                    monthlyData[monthKey] = item.count;
-                    totalCount += item.count;
-                });
+            this.logger.debug(`[${index}/${total}] "${phrase}" - ${totalCount.toLocaleString()} показов`);
 
-                this.logger.debug(`[${index}/${total}] "${phrase}" - ${totalCount.toLocaleString()} показов`);
-
-                return {
-                    phrase,
-                    monthlyData,
-                    totalCount,
-                    requestPhrase: response.data.requestPhrase,
-                    success: true
-                };
-            }
-
-            this.logger.warn(`[${index}/${total}] "${phrase}" - нет данных`);
-            return { phrase, success: false };
-
-        } catch (error) {
-            if (error.response?.status === 429) {
-                this.logger.warn(`[${index}/${total}] "${phrase}" - превышен лимит, повтор через 2с`);
-                await this.delay(2000);
-                return this.getWordstatDynamics(phrase, fromDate, toDate, index, total);
-            }
-
-            this.logger.error(`[${index}/${total}] "${phrase}" - ${error.response?.data?.message || error.message}`);
-            return { phrase, success: false, error: error.message };
+            return {
+                phrase,
+                monthlyData,
+                totalCount,
+                requestPhrase: response.data.requestPhrase,
+                success: true
+            };
         }
+
+        this.logger.warn(`[${index}/${total}] "${phrase}" - нет данных`);
+        return { phrase, success: false };
+
+    } catch (error) {
+        if (error.response?.status === 429) {
+            this.logger.warn(`[${index}/${total}] "${phrase}" - превышен лимит, повтор через 2с`);
+            await this.delay(2000);
+            return this.getWordstatDynamics(phrase, fromDate, toDate, index, total);
+        }
+
+        this.logger.error(`[${index}/${total}] "${phrase}" - ${error.response?.data?.message || error.message}`);
+        return { phrase, success: false, error: error.message };
     }
+}
 
     /**
      * Трансформация данных API в формат для БД
      */
-    transformData(results) {
-        const records = [];
+   transformData(results) {
+    const records = [];
 
-        for (const result of results) {
-            const { phrase, monthlyData } = result;
+    for (const result of results) {
+        const { phrase, monthlyData } = result;
 
-            // Создаем записи для каждого месяца
-            Object.keys(monthlyData).forEach(monthStr => {
-                // ✅ Преобразуем "2025-12" в "2025-12-01" для DATE типа
-                const monthDate = `${monthStr}-01`;
-                
-                records.push({
-                    request: phrase,
-                    month: monthDate,  // ✅ Теперь полная дата
-                    frequency: monthlyData[monthStr],
-                    group: 'Нет группы'
-                });
+        // monthlyData уже содержит правильные ключи в формате YYYY-MM-DD
+        Object.keys(monthlyData).forEach(monthDate => {
+            records.push({
+                request: phrase,
+                month: monthDate,  // ✅ Используем как есть из API
+                frequency: monthlyData[monthDate],
+                group: 'Нет группы'
             });
-        }
-
-        return records;
+        });
     }
+
+    this.logger.debug(`Примеры дат в records: ${records.slice(0, 3).map(r => r.month).join(', ')}`);
+    
+    return records;
+}
 
     /**
      * Проверка существования записи
