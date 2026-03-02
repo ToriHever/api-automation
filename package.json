@@ -8,6 +8,8 @@
     "collect:all": "node scripts/run-service.js",
     "collect:topvisor": "node scripts/run-service.js topvisor",
     "collect:wordstat": "node scripts/run-service.js wordstat",
+    "collect:wordstat:top": "node scripts/run-service.js wordstat --method top",
+    "collect:wordstat:dynamics": "node scripts/run-service.js wordstat --method dynamics",
     "collect:clarity": "node scripts/run-service.js clarity",
     "collect:ga4": "node scripts/run-service.js ga4",
     "collect:gsc": "node scripts/run-service.js gsc",
