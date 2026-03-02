@@ -45,7 +45,6 @@ function loadServicesConfig() {
         return JSON.parse(fs.readFileSync(configPath, 'utf8'));
     }
     
-    // Дефолтная конфигурация
     return {
         topvisor: { enabled: true, priority: 1 },
         wordstat: { enabled: false, priority: 2 },
@@ -65,7 +64,8 @@ function parseArguments() {
         endDate: null,
         manualMode: false,
         forceOverride: false,
-        help: false
+        help: false,
+        method: null
     };
 
     for (let i = 0; i < args.length; i++) {
@@ -96,10 +96,15 @@ function parseArguments() {
             case '-h':
                 options.help = true;
                 break;
+            case '--method':
+            case '-mt':
+                options.method = args[++i];
+                break;
             default:
                 if (!options.service && !arg.startsWith('-')) {
                     options.service = arg;
                 }
+                break;
         }
     }
 
@@ -144,16 +149,14 @@ function showHelp() {
   --end-date <date>        Конечная дата (YYYY-MM-DD)
   -m, --manual             Ручной режим
   -f, --force              Принудительная перезапись
+  --method <name>          Метод сбора (top, dynamics, all)
   -h, --help               Показать эту справку
 
 ПРИМЕРЫ:
-  # Автоматический режим (вчерашние данные)
   node scripts/run-service.js topvisor
-
-  # Ручной режим с конкретными датами  
+  node scripts/run-service.js wordstat --method top
+  node scripts/run-service.js wordstat --method dynamics
   node scripts/run-service.js topvisor --start-date 2025-09-15 --end-date 2025-09-15
-
-  # Принудительная перезапись существующих данных
   node scripts/run-service.js topvisor --force
 
 ПЕРЕМЕННЫЕ ОКРУЖЕНИЯ:
@@ -183,7 +186,6 @@ async function main() {
     let servicesToRun = [];
     
     if (options.service) {
-        // Запуск конкретного сервиса
         if (!servicesConfig[options.service]) {
             console.error(`❌ Сервис "${options.service}" не найден в конфигурации`);
             console.log('\n💡 Доступные сервисы:');
@@ -194,7 +196,6 @@ async function main() {
         }
         servicesToRun = [{ name: options.service, config: servicesConfig[options.service] }];
     } else {
-        // Запуск всех включенных сервисов
         servicesToRun = Object.entries(servicesConfig)
             .filter(([name, config]) => config.enabled)
             .map(([name, config]) => ({ name, config }))
@@ -209,6 +210,9 @@ async function main() {
 
     console.log(`🎯 К запуску: ${servicesToRun.map(s => s.name).join(', ')}\n`);
 
+    // Передаём метод через env до создания коллектора
+    process.env.WORDSTAT_METHOD = options.method || 'all';
+
     // Запускаем сервисы
     const results = new Map();
     
@@ -219,13 +223,10 @@ async function main() {
             console.log(`\n🚀 Запуск сервиса: ${serviceName.toUpperCase()}`);
             console.log(`⚙️ Приоритет: ${serviceConfig.priority || 'не задан'}`);
             
-            // Определяем даты для конкретного сервиса
             let startDate = options.startDate;
             let endDate = options.endDate;
 
             if (!options.manualMode) {
-                // Автоматический режим - используем настройки сервиса
-                // dateOffset из конфига (по умолчанию -1 для вчерашнего дня)
                 const dateOffset = serviceConfig.dateOffset !== undefined 
                     ? serviceConfig.dateOffset 
                     : -1;
@@ -247,11 +248,13 @@ async function main() {
             if (options.forceOverride) {
                 console.log('⚠️ Режим принудительной перезаписи активирован');
             }
+
+            if (options.method) {
+                console.log(`🔧 Метод: ${options.method}`);
+            }
             
-            // Получаем коллектор для сервиса
             const collector = await getCollector(serviceName);
             
-            // Запускаем сбор данных
             const stats = await collector.run({
                 startDate,
                 endDate,
@@ -267,7 +270,6 @@ async function main() {
             results.set(serviceName, { success: false, error });
         }
         
-        // Пауза между сервисами (кроме последнего)
         if (serviceInfo !== servicesToRun[servicesToRun.length - 1]) {
             console.log('⏳ Пауза 2 секунды между сервисами...');
             await new Promise(resolve => setTimeout(resolve, 2000));
@@ -310,7 +312,6 @@ async function main() {
     console.log(`\n📈 ИТОГО: ${totalRecords.toLocaleString()} записей обработано`);
     console.log(`🕐 Завершено: ${new Date().toLocaleString('ru-RU')}`);
     
-    // Завершаем с соответствующим кодом
     process.exit(failed.length > 0 ? 1 : 0);
 }
 
@@ -325,7 +326,6 @@ process.on('unhandledRejection', (reason, promise) => {
     process.exit(1);
 });
 
-// Запуск главной функции
 if (require.main === module) {
     main().catch((error) => {
         console.error('💥 Ошибка запуска:', error);
