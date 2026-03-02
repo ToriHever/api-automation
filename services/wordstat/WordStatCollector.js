@@ -5,134 +5,406 @@ const axios = require('axios');
 class WordStatCollector extends BaseCollector {
     constructor() {
         super('wordstat');
-        // ✅ Правильный URL и токен (как в рабочем скрипте)
-        this.apiUrl = 'https://api.wordstat.yandex.net/v1/dynamics';
-        this.apiToken = process.env.WORDSTAT_API_TOKEN; // ✅ Изменено с WORDSTAT_API_KEY
+        this.apiBaseUrl = 'https://api.wordstat.yandex.net/v1';
+        this.apiToken = process.env.WORDSTAT_API_TOKEN;
         this.batchSize = 10;
-        
+        this.method = process.env.WORDSTAT_METHOD || 'all'; // 'all' | 'dynamics' | 'top'
+
         if (!this.apiToken) {
             throw new Error('WORDSTAT_API_TOKEN environment variable is required');
         }
     }
 
-    /**
-     * Проверка подключения к WordStat API
-     */
+    // ============================================================
+    // БАЗОВЫЕ МЕТОДЫ (BaseCollector interface)
+    // ============================================================
+
     async checkApiConnection() {
         this.logger.info('Проверка подключения к WordStat API');
-        
+
         try {
-            // ✅ Тестовый запрос за последний полный месяц (как в вашем рабочем скрипте)
-            const testPeriod = this.calculatePreviousMonthPeriod();
-            
-            const response = await axios.post(
-                this.apiUrl,
-                {
-                    phrase: 'тест',
-                    period: 'monthly',
-                    fromDate: testPeriod.actualStartDate,
-                    toDate: testPeriod.actualEndDate
-                },
-                {
-                    headers: {
-                        'Content-Type': 'application/json;charset=utf-8',
-                        'Authorization': `Bearer ${this.apiToken}`
-                    },
-                    timeout: 10000
-                }
-            );
-            
-            if (response.data && response.data.dynamics) {
+            const response = await this.apiPost('/topRequests', {
+                phrase: 'защита от ddos'
+            });
+
+            if (response && response.topRequests) {
                 this.logger.info('WordStat API подключение успешно');
                 return true;
             }
-            
+
             throw new Error('Unexpected API response format');
         } catch (error) {
-            this.logger.error('Ошибка подключения к WordStat API', error);
+            if (error.response) {
+                this.logger.error('Ответ API при проверке:', {
+                    status: error.response.status,
+                    data: JSON.stringify(error.response.data)
+                });
+            }
             throw new Error(`WordStat API недоступен: ${error.message}`);
         }
     }
 
     /**
-     * Получение данных из WordStat API
+     * Точка входа — запускает методы в зависимости от this.method
      */
     async fetchData(startDate, endDate) {
+        const allRecords = [];
+
+        if (this.method === 'dynamics' || this.method === 'all') {
+            this.logger.info('=== Запуск метода: dynamics ===');
+            const dynamicsRecords = await this.fetchDynamics();
+            allRecords.push(...dynamicsRecords);
+            this.logger.info(`Dynamics: подготовлено ${dynamicsRecords.length} записей`);
+
+            if (this.method === 'all') {
+                await this.delay(2000);
+            }
+        }
+
+        if (this.method === 'top' || this.method === 'all') {
+            this.logger.info('=== Запуск метода: topRequests ===');
+            const topRecords = await this.fetchTopRequests(startDate);
+            allRecords.push(...topRecords);
+            this.logger.info(`TopRequests: подготовлено ${topRecords.length} записей`);
+        }
+
+        this.logger.info(`Всего подготовлено записей: ${allRecords.length}`);
+        return allRecords;
+    }
+
+    async validateRecord(record) {
+        if (!record || typeof record !== 'object') return null;
+
+        if (record._type === 'dynamics') {
+            return this.validateDynamicsRecord(record);
+        }
+
+        if (record._type === 'top') {
+            return this.validateTopRecord(record);
+        }
+
+        return null;
+    }
+
+    async recordExists(record) {
+        if (!record) return false;
+
         try {
-            // Автоматически вычисляем период "предыдущий полный месяц"
-            const { actualStartDate, actualEndDate } = this.calculatePreviousMonthPeriod(startDate, endDate);
-            
-            this.logger.info(`Получение данных WordStat за период: ${actualStartDate} - ${actualEndDate}`);
+            if (record._type === 'top') {
+                const result = await this.dbManager.query(
+                    `SELECT 1 FROM wordstat.top_requests 
+                     WHERE base_phrase_id = $1 
+                       AND related_phrase_id = $2 
+                       AND check_date = $3`,
+                    [record.base_phrase_id, record.related_phrase_id, record.check_date]
+                );
+                return result.rows.length > 0;
+            } else {
+                const result = await this.dbManager.query(
+                    `SELECT 1 FROM wordstat.tmp_dynamics 
+                     WHERE request_id = $1 AND month = $2`,
+                    [record.request_id, record.month]
+                );
+                return result.rows.length > 0;
+            }
+        } catch (error) {
+            this.logger.error('Ошибка проверки существования записи', error);
+            return false;
+        }
+    }
 
-            // 1. Чтение ключевых слов из файлов
-            const keywords = await this.readKeywords();
+    async insertRecord(record) {
+        if (record._type === 'top') {
+            await this.dbManager.query(
+                `INSERT INTO wordstat.top_requests 
+                    (base_phrase_id, related_phrase_id, count, check_date)
+                 VALUES ($1, $2, $3, $4)`,
+                [record.base_phrase_id, record.related_phrase_id, record.count, record.check_date]
+            );
+        } else {
+            await this.dbManager.query(
+                `INSERT INTO wordstat.tmp_dynamics 
+                    (request_id, group_id, month, frequency)
+                 VALUES ($1, $2, $3, $4)`,
+                [record.request_id, record.group_id, record.month, record.frequency]
+            );
+        }
+    }
 
-            // 2. Получение динамики для всех ключевых слов
-            const allResults = await this.processKeywordsBatch(keywords, actualStartDate, actualEndDate);
+    async updateRecord(record) {
+        if (record._type === 'top') {
+            await this.dbManager.query(
+                `UPDATE wordstat.top_requests 
+                 SET count = $4, updated_at = CURRENT_TIMESTAMP
+                 WHERE base_phrase_id = $1 
+                   AND related_phrase_id = $2 
+                   AND check_date = $3`,
+                [record.base_phrase_id, record.related_phrase_id, record.check_date, record.count]
+            );
+        } else {
+            await this.dbManager.query(
+                `UPDATE wordstat.tmp_dynamics 
+                 SET frequency = $3, group_id = $4, updated_at = CURRENT_TIMESTAMP
+                 WHERE request_id = $1 AND month = $2`,
+                [record.request_id, record.month, record.frequency, record.group_id]
+            );
+        }
+    }
 
-            // 3. Трансформация данных для сохранения
-            const records = this.transformData(allResults);
+    getRecordKey(record) {
+        if (record._type === 'top') {
+            return `top|${record.base_phrase_id}|${record.related_phrase_id}|${record.check_date}`;
+        }
+        return `dynamics|${record.request_id}|${record.month}`;
+    }
 
-            this.logger.info(`Подготовлено записей для сохранения: ${records.length}`);
-            
-            return records;
+    // ============================================================
+    // МЕТОД: DYNAMICS
+    // ============================================================
+
+    async fetchDynamics() {
+        const { actualStartDate, actualEndDate } = this.calculatePreviousMonthPeriod();
+
+        const keywords = await this.readKeywords('dynamics_keywords.txt');
+        const results = await this.processKeywordsBatch(
+            keywords,
+            (keyword, index, total) => this.getDynamics(keyword, actualStartDate, actualEndDate, index, total)
+        );
+
+        return this.transformDynamicsData(results);
+    }
+
+    async getDynamics(phrase, fromDate, toDate, index, total) {
+        try {
+            const response = await this.apiPost('/dynamics', {
+                phrase,
+                period: 'monthly',
+                fromDate,
+                toDate
+            });
+
+            if (response && response.dynamics) {
+                const monthlyData = {};
+                let totalCount = 0;
+
+                response.dynamics.forEach(item => {
+                    let monthKey = item.date;
+                    if (monthKey.length === 7) monthKey = `${monthKey}-01`;
+                    monthlyData[monthKey] = item.count;
+                    totalCount += item.count;
+                });
+
+                this.logger.debug(`[${index}/${total}] dynamics "${phrase}" - ${totalCount.toLocaleString()} показов`);
+                return { phrase, monthlyData, success: true };
+            }
+
+            this.logger.warn(`[${index}/${total}] dynamics "${phrase}" - нет данных`);
+            return { phrase, success: false };
 
         } catch (error) {
-            this.logger.error(`Ошибка получения данных WordStat: ${error.message}`, error);
-            throw error;
+            if (error.response?.status === 429) {
+                this.logger.warn(`[${index}/${total}] "${phrase}" - лимит, повтор через 2с`);
+                await this.delay(2000);
+                return this.getDynamics(phrase, fromDate, toDate, index, total);
+            }
+            this.logger.error(`[${index}/${total}] dynamics "${phrase}" - ${error.response?.data?.message || error.message}`);
+            return { phrase, success: false };
+        }
+    }
+
+    transformDynamicsData(results) {
+        const records = [];
+
+        for (const result of results) {
+            if (!result.success || !result.monthlyData) continue;
+
+            Object.keys(result.monthlyData).forEach(monthDate => {
+                records.push({
+                    _type: 'dynamics',
+                    phrase: result.phrase,
+                    month: monthDate,
+                    frequency: result.monthlyData[monthDate]
+                });
+            });
+        }
+
+        return records;
+    }
+
+    async validateDynamicsRecord(record) {
+        const resolved = await this.resolveRequestIds(record.phrase);
+
+        if (!resolved) {
+            this.logger.warn(`Пропуск dynamics — не найден в common.requests: "${record.phrase}"`);
+            return null;
+        }
+
+        return {
+            _type: 'dynamics',
+            request_id: resolved.request_id,
+            group_id: resolved.group_id,
+            phrase: record.phrase,
+            month: record.month,
+            frequency: record.frequency
+        };
+    }
+
+    // ============================================================
+    // МЕТОД: TOP REQUESTS
+    // ============================================================
+
+    async fetchTopRequests(checkDate) {
+        const date = checkDate || this.formatDate(new Date());
+        this.logger.info(`Дата для topRequests: ${date}`);
+
+        const keywords = await this.readKeywords('top_keywords.txt');
+        const results = await this.processKeywordsBatch(
+            keywords,
+            (keyword, index, total) => this.getTopRequests(keyword, index, total)
+        );
+
+        return this.transformTopData(results, date);
+    }
+
+    async getTopRequests(phrase, index, total) {
+        try {
+            const response = await this.apiPost('/topRequests', { phrase });
+
+            if (response && response.topRequests) {
+                this.logger.debug(`[${index}/${total}] top "${phrase}" - ${response.topRequests.length} фраз`);
+                return { phrase, topRequests: response.topRequests, success: true };
+            }
+
+            this.logger.warn(`[${index}/${total}] top "${phrase}" - нет данных`);
+            return { phrase, success: false };
+
+        } catch (error) {
+            if (error.response?.status === 429) {
+                this.logger.warn(`[${index}/${total}] "${phrase}" - лимит, повтор через 2с`);
+                await this.delay(2000);
+                return this.getTopRequests(phrase, index, total);
+            }
+            this.logger.error(`[${index}/${total}] top "${phrase}" - ${error.response?.data?.message || error.message}`);
+            return { phrase, success: false };
+        }
+    }
+
+    transformTopData(results, checkDate) {
+        const records = [];
+
+        for (const result of results) {
+            if (!result.success || !result.topRequests) continue;
+
+            result.topRequests.forEach(item => {
+                records.push({
+                    _type: 'top',
+                    basePhrase: result.phrase,
+                    relatedPhrase: item.phrase,
+                    count: item.count,
+                    check_date: checkDate
+                });
+            });
+        }
+
+        return records;
+    }
+
+    async validateTopRecord(record) {
+        // Резолвим или создаём обе фразы в common.wordstat_phrases
+        const basePhraseId = await this.resolveOrCreatePhrase(record.basePhrase);
+        const relatedPhraseId = await this.resolveOrCreatePhrase(record.relatedPhrase);
+
+        if (!basePhraseId || !relatedPhraseId) {
+            this.logger.warn(`Пропуск top — не удалось получить id фраз: "${record.basePhrase}" / "${record.relatedPhrase}"`);
+            return null;
+        }
+
+        return {
+            _type: 'top',
+            base_phrase_id: basePhraseId,
+            related_phrase_id: relatedPhraseId,
+            count: record.count,
+            check_date: record.check_date
+        };
+    }
+
+    // ============================================================
+    // ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ
+    // ============================================================
+
+    /**
+     * Получить или создать фразу в common.wordstat_phrases, вернуть id
+     */
+    async resolveOrCreatePhrase(phrase) {
+        try {
+            const result = await this.dbManager.query(
+                `INSERT INTO common.wordstat_phrases (phrase)
+                 VALUES ($1)
+                 ON CONFLICT (phrase) DO UPDATE SET phrase = EXCLUDED.phrase
+                 RETURNING id`,
+                [phrase]
+            );
+            return result.rows[0].id;
+        } catch (error) {
+            this.logger.error(`Ошибка резолва фразы "${phrase}"`, error);
+            return null;
         }
     }
 
     /**
-     * Вычисление периода "предыдущий полный месяц"
-     * Возвращает диапазон от 1-го до последнего числа предыдущего месяца
+     * Поиск request_id и group_id из common.requests по тексту запроса
      */
-    calculatePreviousMonthPeriod(startDate, endDate) {
-        const now = new Date();
-        
-        // Переходим к предыдущему месяцу
-        const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        
-        // Первое число предыдущего месяца
-        const firstDay = new Date(previousMonth.getFullYear(), previousMonth.getMonth(), 1);
-        
-        // Последнее число предыдущего месяца
-        const lastDay = new Date(previousMonth.getFullYear(), previousMonth.getMonth() + 1, 0);
-        
-        const actualStartDate = this.formatDate(firstDay);
-        const actualEndDate = this.formatDate(lastDay);
-        
-        this.logger.info(`Автоматический расчет периода: ${actualStartDate} - ${actualEndDate}`);
-        this.logger.info(`Предыдущий месяц: ${previousMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' })}`);
-        this.logger.info(`Дней в месяце: ${lastDay.getDate()}`);
-        
-        return { actualStartDate, actualEndDate };
+    async resolveRequestIds(phrase) {
+        try {
+            const result = await this.dbManager.query(
+                `SELECT request_id, cluster_topvisor_id 
+                 FROM common.requests 
+                 WHERE request = $1 
+                 LIMIT 1`,
+                [phrase]
+            );
+
+            if (result.rows.length === 0) return null;
+
+            return {
+                request_id: result.rows[0].request_id,
+                group_id: result.rows[0].cluster_topvisor_id
+            };
+        } catch (error) {
+            this.logger.error(`Ошибка поиска request_id для "${phrase}"`, error);
+            return null;
+        }
     }
 
     /**
-     * Форматирование даты в YYYY-MM-DD
+     * POST запрос к WordStat API
      */
-    formatDate(date) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
+    async apiPost(endpoint, body) {
+        const response = await axios.post(
+            `${this.apiBaseUrl}${endpoint}`,
+            body,
+            {
+                headers: {
+                    'Content-Type': 'application/json;charset=utf-8',
+                    'Authorization': `Bearer ${this.apiToken}`
+                },
+                timeout: 30000
+            }
+        );
+        return response.data;
     }
 
     /**
-     * Чтение ключевых слов из файла dynamics_keywords.txt
+     * Чтение ключевых слов из файла
      */
-    async readKeywords() {
+    async readKeywords(filename) {
         const fs = require('fs');
         const path = require('path');
-        
-        const keywordsPath = path.join(__dirname, 'keywords', 'dynamics_keywords.txt');
-        
+
+        const keywordsPath = path.join(__dirname, 'keywords', filename);
+
         if (!fs.existsSync(keywordsPath)) {
-            this.logger.error(`Файл ${keywordsPath} не найден`);
-            this.logger.info('Создайте файл: services/wordstat/keywords/dynamics_keywords.txt');
-            this.logger.info('Добавьте в него поисковые запросы (каждый с новой строки)');
-            throw new Error('Файл с ключевыми словами не найден');
+            throw new Error(`Файл с ключевыми словами не найден: ${keywordsPath}`);
         }
 
         const content = fs.readFileSync(keywordsPath, 'utf-8');
@@ -142,23 +414,20 @@ class WordStatCollector extends BaseCollector {
             .filter(line => line.length > 0 && !line.startsWith('#'));
 
         if (keywords.length === 0) {
-            this.logger.warn('Файл с ключевыми словами пуст');
-            throw new Error('Файл dynamics_keywords.txt пуст');
+            throw new Error(`Файл ${filename} пуст`);
         }
 
-        this.logger.info(`Загружено ${keywords.length} ключевых слов из файла`);
+        this.logger.info(`Загружено ${keywords.length} ключевых слов из ${filename}`);
         return keywords;
     }
 
     /**
      * Обработка ключевых слов пакетами
      */
-    async processKeywordsBatch(keywords, fromDate, toDate) {
+    async processKeywordsBatch(keywords, handler) {
         const results = [];
         let successCount = 0;
         let errorCount = 0;
-
-        this.logger.info(`Обработка пакетами по ${this.batchSize} запросов`);
 
         for (let i = 0; i < keywords.length; i += this.batchSize) {
             const batch = keywords.slice(i, i + this.batchSize);
@@ -167,16 +436,12 @@ class WordStatCollector extends BaseCollector {
 
             this.logger.info(`Пакет ${batchNumber}/${totalBatches} (${batch.length} запросов)`);
 
-            // Параллельная обработка пакета
-            const batchPromises = batch.map((keyword, index) => 
-                this.getWordstatDynamics(keyword, fromDate, toDate, i + index + 1, keywords.length)
+            const batchResults = await Promise.all(
+                batch.map((keyword, index) => handler(keyword, i + index + 1, keywords.length))
             );
 
-            const batchResults = await Promise.all(batchPromises);
-
-            // Сбор результатов
             batchResults.forEach(result => {
-                if (result.success && result.monthlyData) {
+                if (result.success) {
                     results.push(result);
                     successCount++;
                 } else {
@@ -184,199 +449,41 @@ class WordStatCollector extends BaseCollector {
                 }
             });
 
-            // Задержка между пакетами (WordStat лимит: 10 req/sec)
             if (i + this.batchSize < keywords.length) {
-                this.logger.debug(`Пауза 1 секунда между пакетами`);
                 await this.delay(1000);
             }
         }
 
-        this.logger.info(`Успешно: ${successCount}, Ошибок: ${errorCount}`);
-        this.stats.warnings.push(`Успешно: ${successCount}, Ошибок: ${errorCount}`);
-
+        this.logger.info(`Итого — успешно: ${successCount}, ошибок: ${errorCount}`);
         return results;
     }
 
     /**
-     * Получение динамики для одного ключевого слова
+     * Вычисление периода "предыдущий полный месяц"
      */
-   async getWordstatDynamics(phrase, fromDate, toDate, index, total) {
-    const requestBody = {
-        phrase: phrase,
-        period: 'monthly',
-        fromDate: fromDate,
-        toDate: toDate
-    };
+    calculatePreviousMonthPeriod() {
+        const now = new Date();
+        const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const firstDay = new Date(previousMonth.getFullYear(), previousMonth.getMonth(), 1);
+        const lastDay = new Date(previousMonth.getFullYear(), previousMonth.getMonth() + 1, 0);
 
-    try {
-        const response = await axios.post(
-            this.apiUrl,
-            requestBody,
-            {
-                headers: {
-                    'Content-Type': 'application/json;charset=utf-8',
-                    'Authorization': `Bearer ${this.apiToken}`
-                },
-                timeout: 30000
-            }
-        );
+        const actualStartDate = this.formatDate(firstDay);
+        const actualEndDate = this.formatDate(lastDay);
 
-        if (response.data && response.data.dynamics) {
-            const dynamics = response.data.dynamics;
-            
-            // ✅ ИСПРАВЛЕНО: Сохраняем оригинальную дату из API
-            const monthlyData = {};
-            let totalCount = 0;
+        this.logger.info(`Период: ${actualStartDate} - ${actualEndDate} (${previousMonth.toLocaleString('ru-RU', { month: 'long', year: 'numeric' })})`);
 
-            dynamics.forEach(item => {
-                // item.date уже в формате "YYYY-MM-DD" или "YYYY-MM"
-                let monthKey = item.date;
-                
-                // Если пришло только "YYYY-MM", добавляем "-01"
-                if (monthKey.length === 7) { // формат "YYYY-MM"
-                    monthKey = `${monthKey}-01`;
-                }
-                
-                monthlyData[monthKey] = item.count;
-                totalCount += item.count;
-            });
-
-            this.logger.debug(`[${index}/${total}] "${phrase}" - ${totalCount.toLocaleString()} показов`);
-
-            return {
-                phrase,
-                monthlyData,
-                totalCount,
-                requestPhrase: response.data.requestPhrase,
-                success: true
-            };
-        }
-
-        this.logger.warn(`[${index}/${total}] "${phrase}" - нет данных`);
-        return { phrase, success: false };
-
-    } catch (error) {
-        if (error.response?.status === 429) {
-            this.logger.warn(`[${index}/${total}] "${phrase}" - превышен лимит, повтор через 2с`);
-            await this.delay(2000);
-            return this.getWordstatDynamics(phrase, fromDate, toDate, index, total);
-        }
-
-        this.logger.error(`[${index}/${total}] "${phrase}" - ${error.response?.data?.message || error.message}`);
-        return { phrase, success: false, error: error.message };
-    }
-}
-
-    /**
-     * Трансформация данных API в формат для БД
-     */
-   transformData(results) {
-    const records = [];
-
-    for (const result of results) {
-        const { phrase, monthlyData } = result;
-
-        // monthlyData уже содержит правильные ключи в формате YYYY-MM-DD
-        Object.keys(monthlyData).forEach(monthDate => {
-            records.push({
-                request: phrase,
-                month: monthDate,  // ✅ Используем как есть из API
-                frequency: monthlyData[monthDate],
-                group: 'Нет группы'
-            });
-        });
+        return { actualStartDate, actualEndDate };
     }
 
-    this.logger.debug(`Примеры дат в records: ${records.slice(0, 3).map(r => r.month).join(', ')}`);
-    
-    return records;
-}
-
-    /**
-     * Проверка существования записи
-     */
-    async recordExists(record) {
-        try {
-            const result = await this.dbManager.query(
-                `SELECT 1 FROM wordstat.tmp_dynamics 
-                 WHERE request = $1 AND month = $2`,
-                [record.request, record.month]
-            );
-            return result.rows.length > 0;
-        } catch (error) {
-            this.logger.error('Ошибка проверки существования записи', error);
-            return false;
-        }
+    formatDate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
 
-    /**
-     * Вставка новой записи
-     */
-    async insertRecord(record) {
-        await this.dbManager.query(
-            `INSERT INTO wordstat.tmp_dynamics (request, month, frequency, "group")
-             VALUES ($1, $2, $3, $4)`,
-            [record.request, record.month, record.frequency, record.group]
-        );
-    }
-
-    /**
-     * Обновление существующей записи
-     */
-    async updateRecord(record) {
-        await this.dbManager.query(
-            `UPDATE wordstat.tmp_dynamics 
-             SET frequency = $3, "group" = $4, updated_at = CURRENT_TIMESTAMP
-             WHERE request = $1 AND month = $2`,
-            [record.request, record.month, record.frequency, record.group]
-        );
-    }
-
-    /**
-     * Получение ключа записи для логирования
-     */
-    getRecordKey(record) {
-        return `${record.request}|${record.month}`;
-    }
-
-    /**
-     * Задержка
-     */
     delay(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    /**
-     * Статистика по собранным данным
-     */
-    async getStats(startDate, endDate) {
-        try {
-            const result = await this.dbManager.query(
-                `SELECT 
-                    COUNT(*) as total_records,
-                    COUNT(DISTINCT request) as unique_requests,
-                    COUNT(DISTINCT month) as unique_months,
-                    SUM(frequency::INTEGER) as total_frequency,
-                    MIN(month) as first_month,
-                    MAX(month) as last_month
-                 FROM wordstat.tmp_dynamics
-                 WHERE month BETWEEN $1 AND $2`,
-                [startDate, endDate]
-            );
-
-            return {
-                service: 'wordstat',
-                period: { startDate, endDate },
-                ...result.rows[0]
-            };
-        } catch (error) {
-            this.logger.error('Ошибка получения статистики', error);
-            return {
-                service: 'wordstat',
-                period: { startDate, endDate },
-                total_records: 0
-            };
-        }
     }
 }
 
