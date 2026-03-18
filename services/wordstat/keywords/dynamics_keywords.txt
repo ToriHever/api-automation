@@ -163,7 +163,9 @@ dosguard
 
 # Группа: Брендовые запросы Конкурентов
 stormwall
-шторвол
+storm wall
+штормвол
+шторм вол
 ngenix
 индженикс
 cloud4y
@@ -171,12 +173,15 @@ cloud4y
 curator
 куратор
 solar
-сорал
+солар
 servicepipe
 сервиспайп
+сервис пайп
 serverspace
-серверспейс
+server space
+сервер спейс
 edgecenter
 edge center
 эдж центр
+эджцентр
 
