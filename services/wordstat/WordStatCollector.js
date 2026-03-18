@@ -47,13 +47,14 @@ class WordStatCollector extends BaseCollector {
     /**
      * Точка входа — запускает методы в зависимости от this.method
      */
-    async fetchData(startDate, endDate) {
+   async fetchData(startDate, endDate) {
         const allRecords = [];
 
         if (this.method === 'dynamics' || this.method === 'all') {
             this.logger.info('=== Запуск метода: dynamics ===');
-            const dynamicsRecords = await this.fetchDynamics();
+            const dynamicsRecords = await this.fetchDynamics(startDate, endDate);
             allRecords.push(...dynamicsRecords);
+
             this.logger.info(`Dynamics: подготовлено ${dynamicsRecords.length} записей`);
 
             if (this.method === 'all') {
@@ -162,10 +163,19 @@ class WordStatCollector extends BaseCollector {
     // МЕТОД: DYNAMICS
     // ============================================================
 
-    async fetchDynamics() {
-        const { actualStartDate, actualEndDate } = this.calculatePreviousMonthPeriod();
+async fetchDynamics(startDate, endDate) {
+        let actualStartDate, actualEndDate;
+
+        if (startDate && endDate) {
+            actualStartDate = startDate;
+            actualEndDate = endDate;
+            this.logger.info(`Период (ручной): ${actualStartDate} - ${actualEndDate}`);
+        } else {
+            ({ actualStartDate, actualEndDate } = this.calculatePreviousMonthPeriod());
+        }
 
         const keywords = await this.readKeywords('dynamics_keywords.txt');
+
         const results = await this.processKeywordsBatch(
             keywords,
             (keyword, index, total) => this.getDynamics(keyword, actualStartDate, actualEndDate, index, total)
