@@ -5,3 +5,5 @@ config/*
 !config/services.json
 backups/
 tokens/
+
+*.csv
