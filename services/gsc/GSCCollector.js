@@ -102,34 +102,34 @@ class GSCCollector extends GoogleBaseCollector {
     }
   }
 
+  _normalizeUrl(rawUrl) {
+    let url = rawUrl;
+    
+ // Убираем query params (?tag=..., ?page=...)
+    url = url.split('?')[0];
+    
+    // Убираем якоря и text fragments (#section, #:~:text=...)
+    url = url.split('#')[0];
+    
+    // Нормализуем протокол http -> https
+    url = url.replace(/^http:\/\//, 'https://');
+    
+    // Убираем /info/ префикс (/info/blog -> /blog)
+    url = url.replace('https://ddos-guard.ru/info/', 'https://ddos-guard.ru/');
+    
+    // Убираем trailing slash у всех URL
+    url = url.replace(/\/$/, '');
+ 
+    return url;
+}
+
+
   /**
    * Нормализация URL через справочник common.site_map
    */
   async normalizeUrls(rows) {
     try {
-        const normalizeUrl = (rawUrl) => {
-            let url = rawUrl;
-            
-            // Убираем query params (?tag=..., ?page=..., etc.)
-            url = url.split('?')[0];
-            
-            // Убираем якоря и text fragments (#section, #:~:text=...)
-            url = url.split('#')[0];
-            
-            // // Нормализуем протокол http -> https
-            // url = url.replace(/^http:\/\//, 'https://');
-            
-            // // Убираем /info/ префикс (/info/blog -> /blog)
-            // url = url.replace('https://ddos-guard.ru/info/', 'https://ddos-guard.ru/');
-            
-            // // Убираем trailing slash
-            // url = url.replace(/\/$/, '');
-            
-            return url;
-        };
-
-        // Извлекаем уникальные URL из keys[2] с нормализацией
-        const uniqueUrls = [...new Set(rows.map(row => normalizeUrl(row.keys[2])))];
+        const uniqueUrls = [...new Set(rows.map(row => this._normalizeUrl(row.keys[2])))];
         
         this.logger.info(`Найдено уникальных URL после нормализации: ${uniqueUrls.length}`);
 
@@ -163,19 +163,9 @@ class GSCCollector extends GoogleBaseCollector {
   transformData(rows, urlMapping) {
     const records = [];
 
-    const normalizeUrl = (rawUrl) => {
-        let url = rawUrl;
-        url = url.split('?')[0];
-        url = url.split('#')[0];
-        // url = url.replace(/^http:\/\//, 'https://');
-        // url = url.replace('https://ddos-guard.ru/info/', 'https://ddos-guard.ru/');
-        url = url.replace(/\/$/, '');
-        return url;
-    };
-
     for (const row of rows) {
         const [date, query, pageUrl] = row.keys;
-        const cleanUrl = normalizeUrl(pageUrl);
+        const cleanUrl = this._normalizeUrl(pageUrl);
         const targetUrlId = urlMapping[cleanUrl];
 
         if (!targetUrlId) {
