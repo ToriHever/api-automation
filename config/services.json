@@ -10,7 +10,7 @@
     "env_prefix": "TOPVISOR_"
   },
   "wordstat": {
-    "enabled": true,
+    "enabled": false,
     "schedule": "0 9 1 * *",
     "priority": 2,
     "timeout": 300000,
