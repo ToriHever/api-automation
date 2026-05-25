@@ -97,6 +97,7 @@ node scripts/run-service.js wordstat --start-date 2025-01-01 --end-date 2025-01-
 node scripts/run-service.js wordstat --method top
 node scripts/run-service.js wordstat --method dynamics
 node scripts/run-service.js wordstat --force
+node scripts/run-service.js wordstat --start-date 2026-03-01 --end-date 2026-04-30 --method dynamics
 ```
 
 ## 🗄️ Структура БД
