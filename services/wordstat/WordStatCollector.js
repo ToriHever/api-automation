@@ -5,13 +5,12 @@ const axios = require('axios');
 class WordStatCollector extends BaseCollector {
     constructor() {
         super('wordstat');
-        this.apiBaseUrl = 'https://api.wordstat.yandex.net/v1';
-        this.apiToken = process.env.WORDSTAT_API_TOKEN;
-        this.batchSize = 10;
-        this.method = process.env.WORDSTAT_METHOD || 'all'; // 'all' | 'dynamics' | 'top'
+        this.apiBaseUrl = 'https://searchapi.api.cloud.yandex.net/v2/wordstat';
+        this.apiKey = process.env.WORDSTAT_API_KEY;
+        this.folderId = process.env.WORDSTAT_FOLDER_ID;
 
-        if (!this.apiToken) {
-            throw new Error('WORDSTAT_API_TOKEN environment variable is required');
+        if (!this.apiKey || !this.folderId) {
+            throw new Error('WORDSTAT_API_KEY и WORDSTAT_FOLDER_ID обязательны');
         }
     }
 
@@ -24,10 +23,13 @@ class WordStatCollector extends BaseCollector {
 
         try {
             const response = await this.apiPost('/topRequests', {
-                phrase: 'защита от ddos'
+                phrase: 'защита от ddos',
+                numPhrases: 10,
+                regions: ['213'],
+                devices: ['DEVICE_ALL']
             });
 
-            if (response && response.topRequests) {
+            if (response && (response.results || response.associations)) {
                 this.logger.info('WordStat API подключение успешно');
                 return true;
             }
@@ -35,10 +37,7 @@ class WordStatCollector extends BaseCollector {
             throw new Error('Unexpected API response format');
         } catch (error) {
             if (error.response) {
-                this.logger.error('Ответ API при проверке:', {
-                    status: error.response.status,
-                    data: JSON.stringify(error.response.data)
-                });
+                console.log('RAW API ERROR:', JSON.stringify(error.response.data, null, 2));
             }
             throw new Error(`WordStat API недоступен: ${error.message}`);
         }
@@ -47,7 +46,7 @@ class WordStatCollector extends BaseCollector {
     /**
      * Точка входа — запускает методы в зависимости от this.method
      */
-   async fetchData(startDate, endDate) {
+    async fetchData(startDate, endDate) {
         const allRecords = [];
 
         if (this.method === 'dynamics' || this.method === 'all') {
@@ -163,7 +162,7 @@ class WordStatCollector extends BaseCollector {
     // МЕТОД: DYNAMICS
     // ============================================================
 
-async fetchDynamics(startDate, endDate) {
+    async fetchDynamics(startDate, endDate) {
         let actualStartDate, actualEndDate;
 
         if (startDate && endDate) {
@@ -278,16 +277,20 @@ async fetchDynamics(startDate, endDate) {
 
     async getTopRequests(phrase, index, total) {
         try {
-            const response = await this.apiPost('/topRequests', { phrase });
+            const response = await this.apiPost('/topRequests', {
+                phrase,
+                numPhrases: 100,
+                regions: ['213'],
+                devices: ['DEVICE_ALL']
+            });
 
-            if (response && response.topRequests) {
-                this.logger.debug(`[${index}/${total}] top "${phrase}" - ${response.topRequests.length} фраз`);
-                return { phrase, topRequests: response.topRequests, success: true };
+            if (response && response.associations) {
+                this.logger.debug(`[${index}/${total}] top "${phrase}" - ${response.associations.length} фраз`);
+                return { phrase, topRequests: response.associations, success: true };
             }
 
             this.logger.warn(`[${index}/${total}] top "${phrase}" - нет данных`);
             return { phrase, success: false };
-
         } catch (error) {
             if (error.response?.status === 429) {
                 this.logger.warn(`[${index}/${total}] "${phrase}" - лимит, повтор через 2с`);
@@ -310,7 +313,7 @@ async fetchDynamics(startDate, endDate) {
                     _type: 'top',
                     basePhrase: result.phrase,
                     relatedPhrase: item.phrase,
-                    count: item.count,
+                    count: Number(item.count),   // protobuf int64 → строка, приводим к числу
                     check_date: checkDate
                 });
             });
@@ -392,11 +395,11 @@ async fetchDynamics(startDate, endDate) {
     async apiPost(endpoint, body) {
         const response = await axios.post(
             `${this.apiBaseUrl}${endpoint}`,
-            body,
+            { ...body, folderId: this.folderId },
             {
                 headers: {
                     'Content-Type': 'application/json;charset=utf-8',
-                    'Authorization': `Bearer ${this.apiToken}`
+                    'Authorization': `Api-Key ${this.apiKey}`
                 },
                 timeout: 30000
             }
