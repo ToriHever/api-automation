@@ -8,6 +8,8 @@ class WordStatCollector extends BaseCollector {
         this.apiBaseUrl = 'https://searchapi.api.cloud.yandex.net/v2/wordstat';
         this.apiKey = process.env.WORDSTAT_API_KEY;
         this.folderId = process.env.WORDSTAT_FOLDER_ID;
+        this.batchSize = 10;
+        this.method = process.env.WORDSTAT_METHOD || 'all';
 
         if (!this.apiKey || !this.folderId) {
             throw new Error('WORDSTAT_API_KEY и WORDSTAT_FOLDER_ID обязательны');
@@ -163,18 +165,10 @@ class WordStatCollector extends BaseCollector {
     // ============================================================
 
     async fetchDynamics(startDate, endDate) {
-        let actualStartDate, actualEndDate;
 
-        if (startDate && endDate) {
-            actualStartDate = startDate;
-            actualEndDate = endDate;
-            this.logger.info(`Период (ручной): ${actualStartDate} - ${actualEndDate}`);
-        } else {
-            ({ actualStartDate, actualEndDate } = this.calculatePreviousMonthPeriod());
-        }
+        const { actualStartDate, actualEndDate } = this.calculatePreviousMonthPeriod();
 
         const keywords = await this.readKeywords('dynamics_keywords.txt');
-
         const results = await this.processKeywordsBatch(
             keywords,
             (keyword, index, total) => this.getDynamics(keyword, actualStartDate, actualEndDate, index, total)
@@ -187,20 +181,22 @@ class WordStatCollector extends BaseCollector {
         try {
             const response = await this.apiPost('/dynamics', {
                 phrase,
-                period: 'monthly',
-                fromDate,
-                toDate
+                period: 'PERIOD_MONTHLY',
+                fromDate: `${fromDate}T00:00:00Z`,
+                toDate: `${toDate}T00:00:00Z`,
+                regions: ['213'],
+                devices: ['DEVICE_ALL']
             });
 
-            if (response && response.dynamics) {
+            if (response && response.results) {
                 const monthlyData = {};
                 let totalCount = 0;
 
-                response.dynamics.forEach(item => {
-                    let monthKey = item.date;
-                    if (monthKey.length === 7) monthKey = `${monthKey}-01`;
-                    monthlyData[monthKey] = item.count;
-                    totalCount += item.count;
+                response.results.forEach(item => {
+                    const monthKey = item.date.substring(0, 10); // "2026-01-31T00:00:00Z" -> "2026-01-31"
+                    const count = Number(item.count); // protobuf int64 приходит строкой
+                    monthlyData[monthKey] = count;
+                    totalCount += count;
                 });
 
                 this.logger.debug(`[${index}/${total}] dynamics "${phrase}" - ${totalCount.toLocaleString()} показов`);
@@ -209,12 +205,14 @@ class WordStatCollector extends BaseCollector {
 
             this.logger.warn(`[${index}/${total}] dynamics "${phrase}" - нет данных`);
             return { phrase, success: false };
-
         } catch (error) {
             if (error.response?.status === 429) {
                 this.logger.warn(`[${index}/${total}] "${phrase}" - лимит, повтор через 2с`);
                 await this.delay(2000);
                 return this.getDynamics(phrase, fromDate, toDate, index, total);
+            }
+            if (error.response) {
+                console.log('RAW DYNAMICS ERROR:', JSON.stringify(error.response.data, null, 2));
             }
             this.logger.error(`[${index}/${total}] dynamics "${phrase}" - ${error.response?.data?.message || error.message}`);
             return { phrase, success: false };
