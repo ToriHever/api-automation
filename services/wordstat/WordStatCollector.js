@@ -10,6 +10,7 @@ class WordStatCollector extends BaseCollector {
         this.folderId = process.env.WORDSTAT_FOLDER_ID;
         this.batchSize = 10;
         this.method = process.env.WORDSTAT_METHOD || 'all';
+        this.maxRequestsPerRun = parseInt(process.env.WORDSTAT_MAX_PER_RUN || '80', 10);
 
         if (!this.apiKey || !this.folderId) {
             throw new Error('WORDSTAT_API_KEY и WORDSTAT_FOLDER_ID обязательны');
@@ -153,6 +154,77 @@ class WordStatCollector extends BaseCollector {
         }
     }
 
+    async getNextQueueBatch(method, allKeywords, periodKey) {
+        const limit = this.maxRequestsPerRun;
+        const isDynamics = method === 'dynamics';
+
+        const whereExtra = isDynamics ? 'period_start = $2' : 'check_date = $2';
+        const keyValue = isDynamics ? periodKey.periodStart : periodKey.checkDate;
+
+        const existing = await this.dbManager.query(
+            `SELECT COUNT(*)::int AS cnt FROM wordstat.collection_queue WHERE method = $1 AND ${whereExtra}`,
+            [method, keyValue]
+        );
+
+        if (existing.rows[0].cnt === 0) {
+            this.logger.info(`Очередь для ${method} (${keyValue}) не создана — добавляю ${allKeywords.length} фраз`);
+
+            for (const phrase of allKeywords) {
+                if (isDynamics) {
+                    await this.dbManager.query(
+                        `INSERT INTO wordstat.collection_queue (method, phrase, period_start, period_end)
+                     VALUES ($1, $2, $3, $4)
+                     ON CONFLICT (method, phrase, period_start, period_end, check_date) DO NOTHING`,
+                        [method, phrase, periodKey.periodStart, periodKey.periodEnd]
+                    );
+                } else {
+                    await this.dbManager.query(
+                        `INSERT INTO wordstat.collection_queue (method, phrase, check_date)
+                     VALUES ($1, $2, $3)
+                     ON CONFLICT (method, phrase, period_start, period_end, check_date) DO NOTHING`,
+                        [method, phrase, periodKey.checkDate]
+                    );
+                }
+            }
+        }
+
+        const pending = await this.dbManager.query(
+            `SELECT id, phrase FROM wordstat.collection_queue
+         WHERE method = $1 AND ${whereExtra} AND status IN ('pending', 'error') AND attempts < 5
+         ORDER BY attempts ASC, id ASC
+         LIMIT $3`,
+            [method, keyValue, limit]
+        );
+
+        const remaining = await this.dbManager.query(
+            `SELECT COUNT(*)::int AS cnt FROM wordstat.collection_queue
+         WHERE method = $1 AND ${whereExtra} AND status IN ('pending', 'error') AND attempts < 5`,
+            [method, keyValue]
+        );
+
+        this.logger.info(`[${method}] Осталось в очереди: ${remaining.rows[0].cnt}, беру в этот запуск: ${pending.rows.length}`);
+
+        return pending.rows;
+    }
+
+    async markQueueResult(queueId, success, errorMessage = null) {
+        if (success) {
+            await this.dbManager.query(
+                `UPDATE wordstat.collection_queue
+             SET status = 'done', processed_at = CURRENT_TIMESTAMP, attempts = attempts + 1
+             WHERE id = $1`,
+                [queueId]
+            );
+        } else {
+            await this.dbManager.query(
+                `UPDATE wordstat.collection_queue
+             SET status = 'error', last_error = $2, attempts = attempts + 1, processed_at = CURRENT_TIMESTAMP
+             WHERE id = $1`,
+                [queueId, errorMessage]
+            );
+        }
+    }
+
     getRecordKey(record) {
         if (record._type === 'top') {
             return `top|${record.base_phrase_id}|${record.related_phrase_id}|${record.check_date}`;
@@ -165,16 +237,42 @@ class WordStatCollector extends BaseCollector {
     // ============================================================
 
     async fetchDynamics(startDate, endDate) {
-
         const { actualStartDate, actualEndDate } = this.calculatePreviousMonthPeriod();
 
-        const keywords = await this.readKeywords('dynamics_keywords.txt');
-        const results = await this.processKeywordsBatch(
-            keywords,
-            (keyword, index, total) => this.getDynamics(keyword, actualStartDate, actualEndDate, index, total)
-        );
+        const allKeywords = await this.readKeywords('dynamics_keywords.txt');
+        const batch = await this.getNextQueueBatch('dynamics', allKeywords, {
+            periodStart: actualStartDate,
+            periodEnd: actualEndDate
+        });
 
-        return this.transformDynamicsData(results);
+        if (batch.length === 0) {
+            this.logger.info('Очередь dynamics пуста для этого запуска');
+            return [];
+        }
+
+        const records = [];
+        for (let i = 0; i < batch.length; i++) {
+            const { id: queueId, phrase } = batch[i];
+            const result = await this.getDynamics(phrase, actualStartDate, actualEndDate, i + 1, batch.length);
+
+            if (result.success) {
+                await this.markQueueResult(queueId, true);
+                Object.keys(result.monthlyData).forEach(monthDate => {
+                    records.push({
+                        _type: 'dynamics',
+                        phrase: result.phrase,
+                        month: monthDate,
+                        frequency: result.monthlyData[monthDate]
+                    });
+                });
+            } else {
+                await this.markQueueResult(queueId, false, result.error);
+            }
+
+            await this.delay(300);
+        }
+
+        return records;
     }
 
     async getDynamics(phrase, fromDate, toDate, index, total) {
@@ -193,8 +291,8 @@ class WordStatCollector extends BaseCollector {
                 let totalCount = 0;
 
                 response.results.forEach(item => {
-                    const monthKey = item.date.substring(0, 10); // "2026-01-31T00:00:00Z" -> "2026-01-31"
-                    const count = Number(item.count); // protobuf int64 приходит строкой
+                    const monthKey = item.date.substring(0, 10);
+                    const count = Number(item.count);
                     monthlyData[monthKey] = count;
                     totalCount += count;
                 });
@@ -204,18 +302,11 @@ class WordStatCollector extends BaseCollector {
             }
 
             this.logger.warn(`[${index}/${total}] dynamics "${phrase}" - нет данных`);
-            return { phrase, success: false };
+            return { phrase, success: false, error: 'empty response' };
         } catch (error) {
-            if (error.response?.status === 429) {
-                this.logger.warn(`[${index}/${total}] "${phrase}" - лимит, повтор через 2с`);
-                await this.delay(2000);
-                return this.getDynamics(phrase, fromDate, toDate, index, total);
-            }
-            if (error.response) {
-                console.log('RAW DYNAMICS ERROR:', JSON.stringify(error.response.data, null, 2));
-            }
-            this.logger.error(`[${index}/${total}] dynamics "${phrase}" - ${error.response?.data?.message || error.message}`);
-            return { phrase, success: false };
+            const apiMessage = error.response?.data?.message || error.message;
+            this.logger.error(`[${index}/${total}] dynamics "${phrase}" - ${apiMessage}`);
+            return { phrase, success: false, error: apiMessage };
         }
     }
 
@@ -264,13 +355,38 @@ class WordStatCollector extends BaseCollector {
         const date = checkDate || this.formatDate(new Date());
         this.logger.info(`Дата для topRequests: ${date}`);
 
-        const keywords = await this.readKeywords('top_keywords.txt');
-        const results = await this.processKeywordsBatch(
-            keywords,
-            (keyword, index, total) => this.getTopRequests(keyword, index, total)
-        );
+        const allKeywords = await this.readKeywords('top_keywords.txt');
+        const batch = await this.getNextQueueBatch('top', allKeywords, { checkDate: date });
 
-        return this.transformTopData(results, date);
+        if (batch.length === 0) {
+            this.logger.info('Очередь top пуста для этого запуска');
+            return [];
+        }
+
+        const records = [];
+        for (let i = 0; i < batch.length; i++) {
+            const { id: queueId, phrase } = batch[i];
+            const result = await this.getTopRequests(phrase, i + 1, batch.length);
+
+            if (result.success) {
+                await this.markQueueResult(queueId, true);
+                result.topRequests.forEach(item => {
+                    records.push({
+                        _type: 'top',
+                        basePhrase: result.phrase,
+                        relatedPhrase: item.phrase,
+                        count: Number(item.count),
+                        check_date: date
+                    });
+                });
+            } else {
+                await this.markQueueResult(queueId, false, result.error);
+            }
+
+            await this.delay(300);
+        }
+
+        return records;
     }
 
     async getTopRequests(phrase, index, total) {
@@ -288,18 +404,13 @@ class WordStatCollector extends BaseCollector {
             }
 
             this.logger.warn(`[${index}/${total}] top "${phrase}" - нет данных`);
-            return { phrase, success: false };
+            return { phrase, success: false, error: 'empty response' };
         } catch (error) {
-            if (error.response?.status === 429) {
-                this.logger.warn(`[${index}/${total}] "${phrase}" - лимит, повтор через 2с`);
-                await this.delay(2000);
-                return this.getTopRequests(phrase, index, total);
-            }
-            this.logger.error(`[${index}/${total}] top "${phrase}" - ${error.response?.data?.message || error.message}`);
-            return { phrase, success: false };
+            const apiMessage = error.response?.data?.message || error.message;
+            this.logger.error(`[${index}/${total}] top "${phrase}" - ${apiMessage}`);
+            return { phrase, success: false, error: apiMessage };
         }
     }
-
     transformTopData(results, checkDate) {
         const records = [];
 
