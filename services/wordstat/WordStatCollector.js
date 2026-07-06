@@ -292,7 +292,13 @@ class WordStatCollector extends BaseCollector {
 
                 response.results.forEach(item => {
                     const monthKey = item.date.substring(0, 10);
-                    const count = Number(item.count);
+                    const count = (item.count === undefined || item.count === null) ? 0 : Number(item.count);
+
+                    if (Number.isNaN(count)) {
+                        this.logger.warn(`[${index}/${total}] dynamics "${phrase}" - невалидный count для ${monthKey}, пропуск`, { rawItem: item });
+                        return;
+                    }
+
                     monthlyData[monthKey] = count;
                     totalCount += count;
                 });
@@ -584,6 +590,19 @@ class WordStatCollector extends BaseCollector {
      * Вычисление периода "предыдущий полный месяц"
      */
     calculatePreviousMonthPeriod() {
+        if (process.env.WORDSTAT_BACKFILL_MONTH) {
+            const [year, month] = process.env.WORDSTAT_BACKFILL_MONTH.split('-').map(Number);
+            const firstDay = new Date(year, month - 1, 1);
+            const lastDay = new Date(year, month, 0);
+
+            const actualStartDate = this.formatDate(firstDay);
+            const actualEndDate = this.formatDate(lastDay);
+
+            this.logger.info(`Бэкафилл периода: ${actualStartDate} - ${actualEndDate} (WORDSTAT_BACKFILL_MONTH)`);
+
+            return { actualStartDate, actualEndDate };
+        }
+
         const now = new Date();
         const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const firstDay = new Date(previousMonth.getFullYear(), previousMonth.getMonth(), 1);
