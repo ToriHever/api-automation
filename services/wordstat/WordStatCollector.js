@@ -28,7 +28,7 @@ class WordStatCollector extends BaseCollector {
             const response = await this.apiPost('/topRequests', {
                 phrase: 'защита от ddos',
                 numPhrases: 10,
-                regions: ['213'],
+                regions: ['225'],
                 devices: ['DEVICE_ALL']
             });
 
@@ -282,7 +282,7 @@ class WordStatCollector extends BaseCollector {
                 period: 'PERIOD_MONTHLY',
                 fromDate: `${fromDate}T00:00:00Z`,
                 toDate: `${toDate}T00:00:00Z`,
-                regions: ['213'],
+                regions: ['225'],
                 devices: ['DEVICE_ALL']
             });
 
@@ -400,7 +400,7 @@ class WordStatCollector extends BaseCollector {
             const response = await this.apiPost('/topRequests', {
                 phrase,
                 numPhrases: 100,
-                regions: ['213'],
+                regions: ['225'],
                 devices: ['DEVICE_ALL']
             });
 
