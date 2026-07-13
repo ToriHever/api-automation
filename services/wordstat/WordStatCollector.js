@@ -239,7 +239,7 @@ class WordStatCollector extends BaseCollector {
     async fetchDynamics(startDate, endDate) {
         const { actualStartDate, actualEndDate } = this.calculatePreviousMonthPeriod();
 
-        const allKeywords = await this.readKeywords('dynamics_keywords.txt');
+        const allKeywords = await this.readKeywords(process.env.WORDSTAT_KEYWORDS_FILE || 'dynamics_keywords.txt');
         const batch = await this.getNextQueueBatch('dynamics', allKeywords, {
             periodStart: actualStartDate,
             periodEnd: actualEndDate
