@@ -1,12 +1,290 @@
 # Список фраз для scripts/wordstat-dynamics-range.js
 # Один запрос на фразу за весь диапазон 2025-01 .. 2026-06 (не по месяцам)
-# ЭТО ТЕСТОВЫЙ НАБОР — дозаполни своими ~1000 фразами, по одной на строку
 
+уязвимость
+уязвимости сайтов
+уязвимостей
+сайт с уязвимостями
+уязвимости
+brotli
+brotli vs gzip
+gzip vs brotli
+gzip это
+gzip -c
+анализ защищенности
+анализ защищенности информационных систем
+анализ защищенности инфраструктуры
+комплексный анализ защищенности
+анализ безопасности информационных систем
+site:ddos-guard.ru
+backup vps
+хакерские атаки 2025
+хакеры 2025
+тренды кибербезопасности 2025
+ковровая бомбардировка это
+ддос игровых серверов
+как задудосить сервер
+ддос на сервер
+ддос для серверов
+ddos атака на сервер
+global proxy
+globalproxy
+global proxies
+proxy guard
+world proxy
+тест тьюринга
+тьюринг
+тест тьюринга это
+алан тьюринг
+тест тюринга
+хакер
+хакеры
+самый опасный хакер в мире
+кто взломал пентагон
+арион куртаж
+кибератака
+кибератаки
+кибератаки примеры
+примеры кибератак
+хакерские атаки
+квантовые вычисления
+квантовые технологии
+квантовые технологии будущего
+что такое квантовые вычисления
+квантовые технологии примеры
+kvm сервера
+kvm консоль это
+консоль управления kvm
+квм сервер
+kvm server
+фильтрация трафика
+система фильтрации трафика
+фильтрация сетевого трафика
+средства фильтрации трафика
+фильтрация трафика это
+pulse wave
+pulseware
+кто создал интернет
+кто придумал интернет
+когда появился интернет
+в каком году появился интернет
+кто изобрел интернет
+ддос атаки сегодня
+информационная безопасность
+виды информационной безопасности
+что такое информационная безопасность
+системы информационной безопасности
+безопасность информационных систем
+защита от ботов
+bot mitigation
+защита сайта от ботов
+защита от ботов на сайте
+защита от бот атак
+защита cdn
+ddos guard cdn
+cdn ddos
+ddos защита cdn
+cdn сервер аренда
+ddos guard что это
+защита от ddos атак ddos guard
+ddos guard protection
+ddos guard
+уровни ddos атак
+защита от ddos l7
+защита l3 l4
+защита l7
+l4 ddos защита
+raid
+raid 1
+raid массив
+raid 5
+raid массив это
+reverse proxy
+обратный прокси
+реверс прокси
+reverse proxy что это
+что такое reverse proxy
+схема ddos атаки
+ddosguard
+ddos guard
+ddos guard net
+ddos-guard.net
+ddos-guard
+динамическая маршрутизация
+статическая маршрутизация
+статическая и динамическая маршрутизация
+маршрутизация
+динамическая и статическая маршрутизация
+pni
+private network interconnect
+twin tunnel
+pni network
+direct tunnel
+ddos guard
+waf ddos
+waf защита от ddos
 ddos защита
-защита сайта
-защита от ddos
-антиддос для сайта
-vds с защитой от ddos
-защищенный vps
-сервер с защитой от ddos
-аналог cloudflare
+waf
+rpcbind
+port 111
+111 port
+порт 111
+111 порт
+ack
+push and ack flood
+ack flood
+ack это
+what is psh ack flood ddos attack
+udp amplification
+ddos атака на ip адрес
+udp ddos
+dns amplification
+dns amplification attack
+amplification attack
+ddos amplification
+amplification ddos
+ddos атака на ip
+ddos атака по ip
+фрагментация пакетов
+ddos ip
+ддос по айпи
+флуд
+http flood
+флуд это
+flood это
+http flood атака
+icmp
+icmp flood
+icmp ddos
+icmp flood attack
+icmp это
+ping flood
+ping flood attack
+icmp flood
+flood ping
+ping flooding
+ping of death
+ping of death attack
+death ping
+мяч смерти
+ping большими пакетами
+rst пакет
+tcp rst
+кые
+пакет rst
+tcp fin
+slowloris
+slowloris attack
+slowloris ddos
+slow loris attack
+slowloris атака
+syn flood
+syn
+syn flood атака
+syn-flood
+tcp syn flood
+атака
+land attack
+"атака"
+ip land attack
+дфтв
+udp flood
+udp flood attack
+udp ddos
+udp-flood
+ddos udp
+процентиль
+процентиль это
+95
+95 перцентиль
+95 процентиль
+полоса пропускания
+полоса пропускания это
+что такое полоса пропускания
+bandwidth это
+полоса пропускания wifi
+ширина канала
+ширина канала это
+что такое ширина канала
+что такое ширина канала wifi
+ширина канала интернет
+ip
+ip адрес
+ip адрес это
+что такое ip адрес
+ip-адрес
+destination
+destination ip
+dst ip
+destination перевод
+destination address
+tcp пакет
+структура tcp пакета
+tcp пакеты
+tcp packet
+tcp пакет структура
+tcp window
+tcp окно
+tcp window size
+tcp windows
+размер окна tcp
+ack
+ack это
+tcp ack
+что такое ack
+ack tcp
+arp
+arp протокол
+arp это
+arp -a
+протокол arp
+bgp
+bgp протокол
+bgp это
+протокол bgp
+что такое bgp
+tcp rst
+rst пакет
+tcp fin
+rst что это
+пакет rst
+source ip
+src ip
+source ip это
+source ip address
+source address
+syn
+tcp syn
+syn это
+syn packet
+ынт
+tcp
+tcp это
+tcp протокол
+что такое tcp
+протокол tcp
+udp
+udp протокол
+udp это
+протокол udp
+что такое udp
+асимметричная маршрутизация
+асимметричная
+маршрутизация трафика
+асиметричная
+асимметричной
+туннелирование
+туннелирование это
+туннелирование трафика
+тунелирование
+что такое туннелирование
+луковая маршрутизация
+луковый протокол
+луковичная маршрутизация
+чесночная маршрутизация
+протокол onion
+проксирование это
+проксирование
+проксировать это
+прокси это
+что такое проксирование
