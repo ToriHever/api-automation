@@ -19,19 +19,19 @@ CREATE TABLE IF NOT EXISTS wordstat.dynamics_range_queue (
 CREATE INDEX IF NOT EXISTS idx_dynamics_range_queue_status
     ON wordstat.dynamics_range_queue(status);
 
--- Результат: частотность по месяцам, фраза хранится как текст напрямую
--- (без FK на common.requests — это разовый список, не общий справочник для Topvisor-трекинга)
+-- Результат: частотность по месяцам, фраза — FK на common.requests(request_id)
+-- (фраза должна существовать в common.requests, иначе строка не пишется — см. скрипт)
 CREATE TABLE IF NOT EXISTS wordstat.dynamics_range (
-    phrase TEXT NOT NULL,
+    request_id INTEGER NOT NULL REFERENCES common.requests(request_id),
     month DATE NOT NULL,
     frequency INTEGER NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (phrase, month)
+    PRIMARY KEY (request_id, month)
 );
 
-CREATE INDEX IF NOT EXISTS idx_dynamics_range_phrase
-    ON wordstat.dynamics_range(phrase);
+CREATE INDEX IF NOT EXISTS idx_dynamics_range_request
+    ON wordstat.dynamics_range(request_id);
 
 COMMENT ON TABLE wordstat.dynamics_range_queue IS 'Очередь фраз для разового сбора динамики за весь диапазон дат одним запросом';
-COMMENT ON TABLE wordstat.dynamics_range IS 'Частотность по месяцам для фраз из dynamics_range_queue, диапазон дат задаётся в самом скрипте';
+COMMENT ON TABLE wordstat.dynamics_range IS 'Частотность по месяцам для фраз из dynamics_range_queue, привязана к common.requests.request_id; диапазон дат задаётся в самом скрипте';

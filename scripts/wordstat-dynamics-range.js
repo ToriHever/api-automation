@@ -79,6 +79,14 @@ async function markResult(db, id, success, errorMessage = null) {
     }
 }
 
+async function resolveRequestId(db, phrase) {
+    const result = await db.query(
+        `SELECT request_id FROM common.requests WHERE request = $1 LIMIT 1`,
+        [phrase]
+    );
+    return result.rows.length > 0 ? result.rows[0].request_id : null;
+}
+
 async function fetchDynamicsRange(phrase) {
     const response = await axios.post(`${API_BASE_URL}/dynamics`, {
         phrase,
@@ -110,14 +118,14 @@ async function fetchDynamicsRange(phrase) {
     return monthlyData;
 }
 
-async function saveMonthlyData(db, phrase, monthlyData) {
+async function saveMonthlyData(db, requestId, monthlyData) {
     const months = Object.keys(monthlyData);
     for (const month of months) {
         await db.query(
-            `INSERT INTO wordstat.dynamics_range (phrase, month, frequency)
+            `INSERT INTO wordstat.dynamics_range (request_id, month, frequency)
              VALUES ($1, $2, $3)
-             ON CONFLICT (phrase, month) DO UPDATE SET frequency = EXCLUDED.frequency, updated_at = CURRENT_TIMESTAMP`,
-            [phrase, month, monthlyData[month]]
+             ON CONFLICT (request_id, month) DO UPDATE SET frequency = EXCLUDED.frequency, updated_at = CURRENT_TIMESTAMP`,
+            [requestId, month, monthlyData[month]]
         );
     }
     return months.length;
@@ -152,11 +160,18 @@ async function main() {
             const { id, phrase } = batch[i];
             process.stdout.write(`[${i + 1}/${batch.length}] "${phrase}" ... `);
 
+            const requestId = await resolveRequestId(db, phrase);
+            if (requestId === null) {
+                await markResult(db, id, false, 'не найден в common.requests');
+                console.log('ПРОПУСК: не найден в common.requests (API не вызывался)');
+                continue;
+            }
+
             try {
                 const monthlyData = await fetchDynamicsRange(phrase);
-                const written = await saveMonthlyData(db, phrase, monthlyData);
+                const written = await saveMonthlyData(db, requestId, monthlyData);
                 await markResult(db, id, true);
-                console.log(`${written} месяцев записано`);
+                console.log(`${written} месяцев записано (request_id=${requestId})`);
             } catch (error) {
                 const message = error.response?.data?.message || error.message;
                 await markResult(db, id, false, message);
