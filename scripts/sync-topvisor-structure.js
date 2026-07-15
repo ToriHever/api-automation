@@ -71,6 +71,17 @@ async function upsertProjects(db, projects) {
     }
 }
 
+async function upsertProjectEngines(db, projects) {
+    for (const p of projects) {
+        await db.query(
+            `UPDATE common.dim_projects_engines
+             SET name = $2, url = $3
+             WHERE topvisor_project_id = $1`,
+            [String(p.id), p.name, p.url]
+        );
+    }
+}
+
 async function upsertGroups(db, groups) {
     for (const g of groups) {
         await db.query(
@@ -127,6 +138,7 @@ async function main() {
         const projects = await getProjects();
         console.log(`Проектов: ${projects.length}`);
         await upsertProjects(db, projects);
+        await upsertProjectEngines(db, projects);
 
         for (const project of projects) {
             const projectId = parseInt(project.id, 10);
