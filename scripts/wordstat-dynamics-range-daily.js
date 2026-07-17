@@ -16,8 +16,21 @@ const path = require('path');
 const DatabaseManager = require('../core/DatabaseManager');
 
 const API_BASE_URL = 'https://searchapi.api.cloud.yandex.net/v2/wordstat';
-const RANGE_START = '2025-01-01';
-const RANGE_END = '2026-06-30';
+
+// PERIOD_DAILY у Wordstat API отдаёт данные не старше 60 дней от сегодня
+// ("The from field value is older than 60 days") — поэтому диапазон считаем
+// динамически на момент запуска, а не хардкодим даты.
+function formatDate(date) {
+    return date.toISOString().substring(0, 10);
+}
+
+const today = new Date();
+const RANGE_END = formatDate(today);
+
+const rangeStartDate = new Date(today);
+rangeStartDate.setDate(rangeStartDate.getDate() - 59);
+const RANGE_START = formatDate(rangeStartDate);
+
 const MAX_PER_RUN = parseInt(process.env.WORDSTAT_MAX_PER_RUN || '80', 10);
 const KEYWORDS_FILE = process.env.WORDSTAT_RANGE_KEYWORDS_FILE || 'dynamics_range_keywords.txt';
 
@@ -136,6 +149,8 @@ async function main() {
     if (!process.env.WORDSTAT_API_KEY || !process.env.WORDSTAT_FOLDER_ID) {
         throw new Error('WORDSTAT_API_KEY и WORDSTAT_FOLDER_ID обязательны');
     }
+
+    console.log(`Диапазон дат: ${RANGE_START} - ${RANGE_END} (последние 60 дней от сегодня)`);
 
     const db = new DatabaseManager('wordstat-dynamics-range-daily');
     await db.connect();
