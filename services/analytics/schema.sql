@@ -161,23 +161,95 @@ COMMENT ON VIEW analytics.topvisor_group_kpi_monthly IS 'Готовые метр
 -- Под комбинированный текстовый Indicator-виджет со стрелками ▲/▼.
 -- ============================================================
 
-CREATE OR REPLACE VIEW analytics.topvisor_group_kpi_period AS
-SELECT
-    group_name,
-    project_name,
-    search_engine,
-    CASE
-        WHEN event_month = date_trunc('month', CURRENT_DATE - INTERVAL '1 month')::date THEN 'current'
-        WHEN event_month = date_trunc('month', CURRENT_DATE - INTERVAL '2 months')::date THEN 'prev'
-    END AS period,
-    relevance_pct,
-    visibility_pct,
-    avg_position_relevant,
-    avg_position_not_relevant
-FROM analytics.topvisor_group_kpi_monthly
-WHERE event_month IN (
-    date_trunc('month', CURRENT_DATE - INTERVAL '1 month')::date,
-    date_trunc('month', CURRENT_DATE - INTERVAL '2 months')::date
-);
+-- ============================================================
+-- topvisor_group_kpi_period — ВСЕ 4 метрики на одинаковых скользящих
+-- окнах: current = последние 30 дней, prev = предыдущие 30 дней.
+-- Видимость — без взвешивания по частоте (простое среднее коэффициента
+-- по позиции), не зависит от wordstat.tmp_dynamics.
+-- Под комбинированный текстовый Indicator-виджет со стрелками ▲/▼.
+-- ============================================================
 
-COMMENT ON VIEW analytics.topvisor_group_kpi_period IS 'topvisor_group_kpi_monthly, обрезанная до 2 месяцев (current/prev) с меткой period — для текстового Indicator-виджета со сравнением месяц к месяцу';
+CREATE OR REPLACE VIEW analytics.topvisor_group_kpi_period AS
+WITH clusters AS (
+    SELECT
+        ct.cluster_topvisor_id,
+        ct.cluster_topvisor_name,
+        ct.target_url_topvisor,
+        sm.id AS relevant_url_id
+    FROM common.clusters_topvisor ct
+    LEFT JOIN common.site_map sm ON rtrim(sm.url, '/') = rtrim(ct.target_url_topvisor, '/')
+),
+positions_scope AS (
+    SELECT
+        CASE
+            WHEN p.event_date >= CURRENT_DATE - 29 THEN 'current'
+            WHEN p.event_date BETWEEN CURRENT_DATE - 59 AND CURRENT_DATE - 30 THEN 'prev'
+        END AS period,
+        c.cluster_topvisor_name AS group_name,
+        dpe.project_name,
+        dpe.search_engine,
+        p.request,
+        p.position,
+        CASE WHEN p.relevant_url_id = c.relevant_url_id THEN 1 ELSE 0 END AS is_relevant
+    FROM topvisor.positions p
+    JOIN clusters c ON c.cluster_topvisor_id = p.cluster_topvisor_id
+    JOIN common.dim_projects_engines dpe ON dpe.id = p.project_engine_id
+    WHERE p.event_date >= CURRENT_DATE - 59
+),
+scoped AS (
+    SELECT * FROM positions_scope WHERE period IS NOT NULL
+),
+basic AS (
+    SELECT
+        period, group_name, project_name, search_engine,
+        ROUND(100.0 * SUM(is_relevant) / NULLIF(COUNT(*), 0), 2) AS relevance_pct,
+        ROUND(AVG(CASE WHEN is_relevant = 1 THEN position END)::numeric, 2) AS avg_position_relevant,
+        ROUND(AVG(CASE WHEN is_relevant = 0 THEN position END)::numeric, 2) AS avg_position_not_relevant
+    FROM scoped
+    GROUP BY period, group_name, project_name, search_engine
+),
+per_request AS (
+    SELECT period, group_name, project_name, search_engine, request, AVG(position) AS avg_position
+    FROM scoped
+    GROUP BY period, group_name, project_name, search_engine, request
+),
+coeff AS (
+    SELECT
+        period, group_name, project_name, search_engine,
+        CASE
+            WHEN avg_position IS NULL THEN 0
+            WHEN avg_position <= 1 THEN 100
+            WHEN avg_position <= 2 THEN 85
+            WHEN avg_position <= 3 THEN 70
+            WHEN avg_position <= 5 THEN 50
+            WHEN avg_position <= 10 THEN 30
+            WHEN avg_position <= 20 THEN 10
+            WHEN avg_position <= 30 THEN 5
+            ELSE 0
+        END AS coefficient
+    FROM per_request
+),
+visibility AS (
+    SELECT
+        period, group_name, project_name, search_engine,
+        ROUND(AVG(coefficient)::numeric, 2) AS visibility_pct
+    FROM coeff
+    GROUP BY period, group_name, project_name, search_engine
+)
+SELECT
+    b.period,
+    b.group_name,
+    b.project_name,
+    b.search_engine,
+    b.relevance_pct,
+    v.visibility_pct,
+    b.avg_position_relevant,
+    b.avg_position_not_relevant
+FROM basic b
+LEFT JOIN visibility v
+    ON v.period = b.period
+   AND v.group_name = b.group_name
+   AND v.project_name = b.project_name
+   AND v.search_engine = b.search_engine;
+
+COMMENT ON VIEW analytics.topvisor_group_kpi_period IS 'Все 4 метрики на одинаковых скользящих окнах 30 дней: current = последние 30 дней, prev = предыдущие 30 дней. Видимость без взвешивания по частоте.';
