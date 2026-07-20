@@ -153,3 +153,31 @@ LEFT JOIN visibility v
    AND v.search_engine = b.search_engine;
 
 COMMENT ON VIEW analytics.topvisor_group_kpi_monthly IS 'Готовые метрики (релевантность %, взвешенная видимость %, средняя позиция по релевантным/нерелевантным) на месяц × группу × проект × ПС. Считать в DataLens ничего не нужно, только визуализировать.';
+
+-- ============================================================
+-- topvisor_group_kpi_period — то же самое, но только 2 месяца
+-- (последний полный / предпоследний), с меткой period = 'current'/'prev' —
+-- по тому же принципу, что уже используется в analytics.v_gsc_requests_agg.
+-- Под комбинированный текстовый Indicator-виджет со стрелками ▲/▼.
+-- ============================================================
+
+CREATE OR REPLACE VIEW analytics.topvisor_group_kpi_period AS
+SELECT
+    group_name,
+    project_name,
+    search_engine,
+    CASE
+        WHEN event_month = date_trunc('month', CURRENT_DATE - INTERVAL '1 month')::date THEN 'current'
+        WHEN event_month = date_trunc('month', CURRENT_DATE - INTERVAL '2 months')::date THEN 'prev'
+    END AS period,
+    relevance_pct,
+    visibility_pct,
+    avg_position_relevant,
+    avg_position_not_relevant
+FROM analytics.topvisor_group_kpi_monthly
+WHERE event_month IN (
+    date_trunc('month', CURRENT_DATE - INTERVAL '1 month')::date,
+    date_trunc('month', CURRENT_DATE - INTERVAL '2 months')::date
+);
+
+COMMENT ON VIEW analytics.topvisor_group_kpi_period IS 'topvisor_group_kpi_monthly, обрезанная до 2 месяцев (current/prev) с меткой period — для текстового Indicator-виджета со сравнением месяц к месяцу';
