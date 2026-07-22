@@ -233,9 +233,18 @@ LEFT JOIN visibility v
 COMMENT ON VIEW analytics.topvisor_group_kpi_period IS 'Все 4 метрики на одинаковых скользящих окнах 30 дней: current = последние 30 дней, prev = предыдущие 30 дней. Группа — из topvisor.dim_keywords/dim_groups. Видимость без взвешивания по частоте.';
 
 -- ============================================================
+-- common.products была дропнута (DROP TABLE common.products CASCADE) —
+-- содержала дубли по url_id, из-за которых JOIN на неё размножал строки
+-- gsc.search_console и искажал средние (в частности AVG(position)).
+-- Заодно унесла с собой старые analytics.v_gsc_monthly/v_gsc_yearly —
+-- воссозданы ниже на TopVisor-структуре вместо product_name.
+-- product_name как измерение больше нигде не используется.
+-- ============================================================
+
+-- ============================================================
 -- v_gsc_requests_daily — базовая вью по данным GSC (gsc.search_console),
 -- обогащённая связкой с TopVisor-структурой и брендовой/доменной разметкой.
--- Гранулярность: одна строка = день × запрос × страница (product).
+-- Гранулярность: одна строка = день × запрос × страница.
 -- Используется как единственный источник для всех v_gsc_requests_* ниже —
 -- не трогай напрямую gsc.search_console в новых вью, наследуйся отсюда.
 -- ============================================================
@@ -262,7 +271,6 @@ cluster_keywords AS (
     WHERE k.target IS NOT NULL
 )
 SELECT
-    p.product_name,
     sc.event_date,
     sc.request,
     sc.clicks,
@@ -282,7 +290,6 @@ SELECT
         ELSE 'other'
     END AS site
 FROM gsc.search_console sc
-JOIN common.products p ON p.url_id = sc.target_url
 JOIN common.site_map sm ON sm.id = sc.target_url
 LEFT JOIN url_cluster_map ucm ON ucm.target_url_norm = rtrim(lower(sm.url), '/')
 LEFT JOIN cluster_keywords ck ON ck.target_url_norm = rtrim(lower(sm.url), '/') AND ck.request = sc.request
@@ -291,18 +298,19 @@ WHERE sc.event_date >= (CURRENT_DATE - '6 mons'::interval);
 COMMENT ON VIEW analytics.v_gsc_requests_daily IS 'Базовая вью по gsc.search_console (последние 6 мес.), обогащённая project_name/cluster_topvisor_name (через topvisor.dim_keywords/dim_groups), is_cluster_keyword, is_brand (common.brand_keywords) и site (RU/EN по домену). Источник для всех остальных v_gsc_requests_*.';
 
 -- ============================================================
--- v_gsc_requests_agg — current/prev (30 дней скользящих) на уровне
--- product_name × request, брендовые запросы (is_brand) ИСКЛЮЧЕНЫ.
--- Источник для v_gsc_requests_kpi.
+-- v_gsc_requests_agg — current/prev (30 дней скользящих) на уровне request,
+-- брендовые запросы (is_brand) ИСКЛЮЧЕНЫ. ctr = SUM(clicks)/SUM(impressions)
+-- (взвешенный по объёму, НЕ среднее по дням — среднее искажает итог, если
+-- у запроса разные по объёму показов дни). Источник для v_gsc_requests_kpi.
 -- ============================================================
 
 CREATE OR REPLACE VIEW analytics.v_gsc_requests_agg AS
 WITH current_period AS (
     SELECT
-        product_name, request, 'current'::text AS period,
+        request, 'current'::text AS period,
         sum(clicks) AS clicks,
         sum(impressions) AS impressions,
-        round(avg(ctr), 4) AS ctr,
+        round(sum(clicks)::numeric * 100.0 / NULLIF(sum(impressions), 0), 4) AS ctr,
         round(avg("position"), 0) AS "position",
         CASE WHEN avg("position") <= 3.5 THEN 1 ELSE 0 END AS in_top3,
         CASE WHEN avg("position") > 3.5 AND avg("position") <= 5.5 THEN 1 ELSE 0 END AS in_top5,
@@ -312,14 +320,14 @@ WITH current_period AS (
     FROM analytics.v_gsc_requests_daily
     WHERE event_date >= (CURRENT_DATE - '30 days'::interval)
       AND NOT is_brand
-    GROUP BY product_name, request, project_name, cluster_topvisor_name
+    GROUP BY request, project_name, cluster_topvisor_name
 ),
 prev_period AS (
     SELECT
-        product_name, request, 'prev'::text AS period,
+        request, 'prev'::text AS period,
         sum(clicks) AS clicks,
         sum(impressions) AS impressions,
-        round(avg(ctr), 4) AS ctr,
+        round(sum(clicks)::numeric * 100.0 / NULLIF(sum(impressions), 0), 4) AS ctr,
         round(avg("position"), 0) AS "position",
         CASE WHEN avg("position") <= 3.5 THEN 1 ELSE 0 END AS in_top3,
         CASE WHEN avg("position") > 3.5 AND avg("position") <= 5.5 THEN 1 ELSE 0 END AS in_top5,
@@ -330,21 +338,24 @@ prev_period AS (
     WHERE event_date >= (CURRENT_DATE - '60 days'::interval)
       AND event_date < (CURRENT_DATE - '30 days'::interval)
       AND NOT is_brand
-    GROUP BY product_name, request, project_name, cluster_topvisor_name
+    GROUP BY request, project_name, cluster_topvisor_name
 )
 SELECT * FROM current_period
 UNION ALL
 SELECT * FROM prev_period;
 
-COMMENT ON VIEW analytics.v_gsc_requests_agg IS 'current/prev (скользящие 30 дней) на уровне product_name×request, без брендовых запросов (NOT is_brand). Источник для v_gsc_requests_kpi.';
+COMMENT ON VIEW analytics.v_gsc_requests_agg IS 'current/prev (скользящие 30 дней) на уровне request, без брендовых запросов (NOT is_brand). ctr взвешен по объёму (SUM/SUM), не усреднён по дням. Источник для v_gsc_requests_kpi.';
 
 -- ============================================================
 -- v_gsc_requests_kpi — ГОТОВЫЕ метрики для DataLens-датасета/RichText-блоков
 -- ТОП3/ТОП5/ТОП10/Все (bucket) × режим "все запросы"/"только запросы
--- кластера" (mode) × product_name/project_name/cluster_topvisor_name.
+-- кластера" (mode) × project_name/cluster_topvisor_name.
 -- В DataLens формулах: MAX(IF [bucket]='top3' AND [mode]='all' THEN [x] END)
 -- либо фильтр-селектор на дашборде по полю mode (тогда в формулах хватает
 -- только [bucket]). Никакой агрегации в самом DataLens не считать.
+-- ctr_avg = SUM(clicks)/SUM(impressions) по бакету (взвешенный, не среднее
+-- CTR отдельных запросов — иначе мелкие запросы с случайным 100% CTR
+-- перетягивают итог в произвольную сторону).
 -- ============================================================
 
 CREATE OR REPLACE VIEW analytics.v_gsc_requests_kpi AS
@@ -352,36 +363,36 @@ WITH base AS (
     SELECT * FROM analytics.v_gsc_requests_agg
 ),
 buckets AS (
-    SELECT product_name, project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top3'  AS bucket, 'all' AS mode FROM base WHERE in_top3 = 1
+    SELECT project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top3'  AS bucket, 'all' AS mode FROM base WHERE in_top3 = 1
     UNION ALL
-    SELECT product_name, project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top3'  AS bucket, 'keywords_only' AS mode FROM base WHERE in_top3 = 1 AND is_cluster_keyword
+    SELECT project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top3'  AS bucket, 'keywords_only' AS mode FROM base WHERE in_top3 = 1 AND is_cluster_keyword
     UNION ALL
-    SELECT product_name, project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top5'  AS bucket, 'all' AS mode FROM base WHERE in_top5 = 1
+    SELECT project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top5'  AS bucket, 'all' AS mode FROM base WHERE in_top5 = 1
     UNION ALL
-    SELECT product_name, project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top5'  AS bucket, 'keywords_only' AS mode FROM base WHERE in_top5 = 1 AND is_cluster_keyword
+    SELECT project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top5'  AS bucket, 'keywords_only' AS mode FROM base WHERE in_top5 = 1 AND is_cluster_keyword
     UNION ALL
-    SELECT product_name, project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top10' AS bucket, 'all' AS mode FROM base WHERE in_top10 = 1
+    SELECT project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top10' AS bucket, 'all' AS mode FROM base WHERE in_top10 = 1
     UNION ALL
-    SELECT product_name, project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top10' AS bucket, 'keywords_only' AS mode FROM base WHERE in_top10 = 1 AND is_cluster_keyword
+    SELECT project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'top10' AS bucket, 'keywords_only' AS mode FROM base WHERE in_top10 = 1 AND is_cluster_keyword
     UNION ALL
-    SELECT product_name, project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'all'   AS bucket, 'all' AS mode FROM base
+    SELECT project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'all'   AS bucket, 'all' AS mode FROM base
     UNION ALL
-    SELECT product_name, project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'all'   AS bucket, 'keywords_only' AS mode FROM base WHERE is_cluster_keyword
+    SELECT project_name, cluster_topvisor_name, period, request, clicks, impressions, ctr, position, 'all'   AS bucket, 'keywords_only' AS mode FROM base WHERE is_cluster_keyword
 ),
 agg AS (
     SELECT
-        product_name, project_name, cluster_topvisor_name, bucket, mode, period,
+        project_name, cluster_topvisor_name, bucket, mode, period,
         COUNT(DISTINCT request)          AS requests_count,
         SUM(clicks)                      AS clicks_sum,
         SUM(impressions)                 AS impressions_sum,
-        ROUND(AVG(ctr)::numeric, 4)      AS ctr_avg,
+        ROUND(SUM(clicks)::numeric * 100.0 / NULLIF(SUM(impressions), 0), 4) AS ctr_avg,
         ROUND(AVG(position)::numeric, 0) AS position_avg
     FROM buckets
-    GROUP BY product_name, project_name, cluster_topvisor_name, bucket, mode, period
+    GROUP BY project_name, cluster_topvisor_name, bucket, mode, period
 ),
 pivoted AS (
     SELECT
-        product_name, project_name, cluster_topvisor_name, bucket, mode,
+        project_name, cluster_topvisor_name, bucket, mode,
         MAX(requests_count)    FILTER (WHERE period = 'current') AS requests_current,
         MAX(requests_count)    FILTER (WHERE period = 'prev')    AS requests_prev,
         MAX(clicks_sum)        FILTER (WHERE period = 'current') AS clicks_current,
@@ -393,14 +404,13 @@ pivoted AS (
         MAX(position_avg)      FILTER (WHERE period = 'current') AS position_current,
         MAX(position_avg)      FILTER (WHERE period = 'prev')    AS position_prev
     FROM agg
-    GROUP BY product_name, project_name, cluster_topvisor_name, bucket, mode
+    GROUP BY project_name, cluster_topvisor_name, bucket, mode
 ),
 totals AS (
-    SELECT product_name, project_name, cluster_topvisor_name, mode, requests_current AS total_requests_current
+    SELECT project_name, cluster_topvisor_name, mode, requests_current AS total_requests_current
     FROM pivoted WHERE bucket = 'all'
 )
 SELECT
-    p.product_name,
     p.project_name,
     p.cluster_topvisor_name,
     p.bucket,
@@ -418,18 +428,18 @@ SELECT
     ROUND(p.requests_current * 100.0 / NULLIF(t.total_requests_current, 0), 0) AS pct_of_total
 FROM pivoted p
 LEFT JOIN totals t
-    ON t.product_name = p.product_name
-   AND t.project_name IS NOT DISTINCT FROM p.project_name
+    ON t.project_name IS NOT DISTINCT FROM p.project_name
    AND t.cluster_topvisor_name IS NOT DISTINCT FROM p.cluster_topvisor_name
    AND t.mode = p.mode;
 
-COMMENT ON VIEW analytics.v_gsc_requests_kpi IS 'Готовые KPI (ТОП3/5/10/все × режим all/keywords_only) для RichText-блоков DataLens поверх v_gsc_requests_agg (без бренда). DataLens ничего не агрегирует, только выбирает bucket/mode через MAX(IF ...) или дашборд-селектор.';
+COMMENT ON VIEW analytics.v_gsc_requests_kpi IS 'Готовые KPI (ТОП3/5/10/все × режим all/keywords_only) для RichText-блоков DataLens поверх v_gsc_requests_agg (без бренда). ctr взвешен по объёму. DataLens ничего не агрегирует, только выбирает bucket/mode через MAX(IF ...) или дашборд-селектор.';
 
 -- ============================================================
 -- v_gsc_requests_kpi_brand — та же логика ТОП3/5/10/все, что и
 -- v_gsc_requests_kpi, но только по брендовым запросам (is_brand) и
 -- только с одним измерением site (RU/EN/other) — без project/cluster/mode,
 -- потому что бренд-дашборд не завязан на конкретный TopVisor-кластер.
+-- ctr взвешен по объёму так же, как в v_gsc_requests_kpi.
 -- ============================================================
 
 CREATE OR REPLACE VIEW analytics.v_gsc_requests_kpi_brand AS
@@ -443,7 +453,7 @@ current_period AS (
         site, request, 'current'::text AS period,
         sum(clicks) AS clicks,
         sum(impressions) AS impressions,
-        round(avg(ctr), 4) AS ctr,
+        round(sum(clicks)::numeric * 100.0 / NULLIF(sum(impressions), 0), 4) AS ctr,
         round(avg(position), 0) AS position,
         CASE WHEN avg(position) <= 3.5 THEN 1 ELSE 0 END AS in_top3,
         CASE WHEN avg(position) > 3.5 AND avg(position) <= 5.5 THEN 1 ELSE 0 END AS in_top5,
@@ -457,7 +467,7 @@ prev_period AS (
         site, request, 'prev'::text AS period,
         sum(clicks) AS clicks,
         sum(impressions) AS impressions,
-        round(avg(ctr), 4) AS ctr,
+        round(sum(clicks)::numeric * 100.0 / NULLIF(sum(impressions), 0), 4) AS ctr,
         round(avg(position), 0) AS position,
         CASE WHEN avg(position) <= 3.5 THEN 1 ELSE 0 END AS in_top3,
         CASE WHEN avg(position) > 3.5 AND avg(position) <= 5.5 THEN 1 ELSE 0 END AS in_top5,
@@ -487,7 +497,7 @@ agg AS (
         COUNT(DISTINCT request)          AS requests_count,
         SUM(clicks)                      AS clicks_sum,
         SUM(impressions)                 AS impressions_sum,
-        ROUND(AVG(ctr)::numeric, 4)      AS ctr_avg,
+        ROUND(SUM(clicks)::numeric * 100.0 / NULLIF(SUM(impressions), 0), 4) AS ctr_avg,
         ROUND(AVG(position)::numeric, 0) AS position_avg
     FROM buckets
     GROUP BY site, bucket, period
@@ -529,4 +539,105 @@ SELECT
 FROM pivoted p
 LEFT JOIN totals t ON t.site = p.site;
 
-COMMENT ON VIEW analytics.v_gsc_requests_kpi_brand IS 'Та же логика bucket (top3/top5/top10/all) × current/prev, что и v_gsc_requests_kpi, но только по брендовым запросам (is_brand) и с одним измерением site (RU/EN/other) вместо project/cluster/mode.';
+COMMENT ON VIEW analytics.v_gsc_requests_kpi_brand IS 'Та же логика bucket (top3/top5/top10/all) × current/prev, что и v_gsc_requests_kpi, но только по брендовым запросам (is_brand) и с одним измерением site (RU/EN/other) вместо project/cluster/mode. ctr взвешен по объёму.';
+
+-- ============================================================
+-- v_gsc_monthly / v_gsc_yearly — сводная таблица по месяцам/годам.
+-- Раньше группировались по product_name из common.products (таблица
+-- дропнута — содержала дубли по url_id, искажавшие данные). Теперь
+-- группировка по project_name/cluster_topvisor_name через TopVisor —
+-- та же связка, что и в v_gsc_requests_daily. ctr — "сырой" (0..1,
+-- без умножения на 100), как приходит из GSC, для совместимости с
+-- существующим форматированием чарта в DataLens.
+-- ============================================================
+
+CREATE OR REPLACE VIEW analytics.v_gsc_monthly AS
+WITH url_cluster_map AS (
+    SELECT DISTINCT ON (rtrim(lower(k.target), '/'))
+        rtrim(lower(k.target), '/') AS target_url_norm,
+        g.name AS cluster_topvisor_name,
+        dpe.project_name
+    FROM topvisor.dim_keywords k
+    JOIN topvisor.dim_groups g ON g.id = k.group_id
+    JOIN topvisor.dim_projects tp ON tp.id = k.project_id
+    JOIN common.dim_projects_engines dpe ON dpe.topvisor_project_id = tp.id::text
+    WHERE k.target IS NOT NULL
+    ORDER BY rtrim(lower(k.target), '/'), g.id
+),
+daily AS (
+    SELECT
+        sc.event_date,
+        sc.clicks,
+        sc.impressions,
+        sc.ctr::numeric AS ctr,
+        sc."position"::numeric AS "position",
+        ucm.project_name,
+        ucm.cluster_topvisor_name
+    FROM gsc.search_console sc
+    JOIN common.site_map sm ON sm.id = sc.target_url
+    LEFT JOIN url_cluster_map ucm ON ucm.target_url_norm = rtrim(lower(sm.url), '/')
+    WHERE sc.event_date >= (date_trunc('month', CURRENT_DATE::timestamp with time zone) - '5 mons'::interval)
+)
+SELECT
+    project_name,
+    cluster_topvisor_name,
+    date_trunc('month', event_date::timestamp with time zone)::date AS period_start,
+    sum(clicks) AS clicks,
+    sum(impressions) AS impressions,
+    round(avg(ctr), 2) AS ctr,
+    round(avg("position"), 1) AS "position",
+    TRIM(BOTH FROM to_char(sum(clicks), 'FM999 999 999'::text)) AS clicks_formatted,
+    TRIM(BOTH FROM to_char(sum(impressions), 'FM999 999 999'::text)) AS impressions_formatted,
+    CASE
+        WHEN date_trunc('month', event_date::timestamp with time zone) = date_trunc('month', CURRENT_DATE::timestamp with time zone) THEN true
+        ELSE false
+    END AS is_incomplete
+FROM daily
+GROUP BY project_name, cluster_topvisor_name, date_trunc('month', event_date::timestamp with time zone);
+
+COMMENT ON VIEW analytics.v_gsc_monthly IS 'Сводка по месяцам (последние 6 мес.) для большой таблицы в DataLens. Группировка project_name/cluster_topvisor_name (TopVisor) вместо бывшего product_name (common.products дропнута). ctr сырой (0..1), как из GSC.';
+
+CREATE OR REPLACE VIEW analytics.v_gsc_yearly AS
+WITH url_cluster_map AS (
+    SELECT DISTINCT ON (rtrim(lower(k.target), '/'))
+        rtrim(lower(k.target), '/') AS target_url_norm,
+        g.name AS cluster_topvisor_name,
+        dpe.project_name
+    FROM topvisor.dim_keywords k
+    JOIN topvisor.dim_groups g ON g.id = k.group_id
+    JOIN topvisor.dim_projects tp ON tp.id = k.project_id
+    JOIN common.dim_projects_engines dpe ON dpe.topvisor_project_id = tp.id::text
+    WHERE k.target IS NOT NULL
+    ORDER BY rtrim(lower(k.target), '/'), g.id
+),
+daily AS (
+    SELECT
+        sc.event_date,
+        sc.clicks,
+        sc.impressions,
+        sc.ctr::numeric AS ctr,
+        sc."position"::numeric AS "position",
+        ucm.project_name,
+        ucm.cluster_topvisor_name
+    FROM gsc.search_console sc
+    JOIN common.site_map sm ON sm.id = sc.target_url
+    LEFT JOIN url_cluster_map ucm ON ucm.target_url_norm = rtrim(lower(sm.url), '/')
+)
+SELECT
+    project_name,
+    cluster_topvisor_name,
+    date_trunc('year', event_date::timestamp with time zone)::date AS period_start,
+    sum(clicks) AS clicks,
+    sum(impressions) AS impressions,
+    round(avg(ctr), 2) AS ctr,
+    round(avg("position"), 1) AS "position",
+    TRIM(BOTH FROM to_char(sum(clicks), 'FM999 999 999'::text)) AS clicks_formatted,
+    TRIM(BOTH FROM to_char(sum(impressions), 'FM999 999 999'::text)) AS impressions_formatted,
+    CASE
+        WHEN date_trunc('year', event_date::timestamp with time zone) = date_trunc('year', CURRENT_DATE::timestamp with time zone) THEN true
+        ELSE false
+    END AS is_incomplete
+FROM daily
+GROUP BY project_name, cluster_topvisor_name, date_trunc('year', event_date::timestamp with time zone);
+
+COMMENT ON VIEW analytics.v_gsc_yearly IS 'Сводка по годам (вся история) для большой таблицы в DataLens. Группировка project_name/cluster_topvisor_name (TopVisor) вместо бывшего product_name (common.products дропнута). ctr сырой (0..1), как из GSC.';
