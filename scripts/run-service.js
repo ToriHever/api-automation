@@ -11,7 +11,8 @@ async function getCollector(serviceName) {
         'clarity': () => require('../services/clarity/ClarityCollector'),
         'ga4': () => require('../services/ga4/GA4Collector'),
         'gsc': () => require('../services/gsc/GSCCollector'),
-        'yandex-metrika': () => require('../services/yandex-metrika/YandexMetrikaCollector')
+        'yandex-metrika': () => require('../services/yandex-metrika/YandexMetrikaCollector'),
+        'yandex-serp': () => require('../services/yandex-serp/YandexSerpCollector')
     };
 
     if (!collectorsMap[serviceName]) {
@@ -51,7 +52,8 @@ function loadServicesConfig() {
         clarity: { enabled: false, priority: 3 },
         ga4: { enabled: false, priority: 4 },
         gsc: { enabled: false, priority: 5 },
-        'yandex-metrika': { enabled: false, priority: 6 }
+        'yandex-metrika': { enabled: false, priority: 6 },
+        'yandex-serp': { enabled: false, priority: 7 }
     };
 }
 
@@ -142,6 +144,7 @@ function showHelp() {
   ga4              Google Analytics 4
   gsc              Google Search Console
   yandex-metrika   Яндекс.Метрика
+  yandex-serp      Yandex Search API (полная выдача, платный)
 
 ОПЦИИ:
   -s, --service <name>     Запустить конкретный сервис

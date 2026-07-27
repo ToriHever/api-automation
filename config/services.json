@@ -57,5 +57,15 @@
     "dateOffset": -1,
     "description": "Яндекс.Метрика веб-аналитика. Данные берутся за вчерашний день",
     "env_prefix": "YANDEX_METRIKA_"
+  },
+  "yandex-serp": {
+    "enabled": false,
+    "schedule": "0 14 * * *",
+    "priority": 7,
+    "timeout": 600000,
+    "retries": 2,
+    "dateOffset": 0,
+    "description": "Yandex Search API — полная выдача (ТОП-N, платный API) по фиксированному списку запросов. Данные берутся за текущий день",
+    "env_prefix": "YANDEX_SEARCH_"
   }
 }
