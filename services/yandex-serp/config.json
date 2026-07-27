@@ -1,0 +1,16 @@
+{
+  "name": "Yandex Search API",
+  "description": "Сбор полной выдачи Яндекса (ТОП-N, включая конкурентов) по частотным запросам",
+  "timeout": 30000,
+  "retries": 3,
+  "delayBetweenRequests": 3000,
+  "maxKeywordsPerRun": 100,
+  "resultsPerQuery": 20,
+  "searchType": "SEARCH_TYPE_RU",
+  "l10n": "LOCALIZATION_RU",
+  "responseFormat": "FORMAT_XML",
+  "ownDomains": [
+    "ddos-guard.ru",
+    "ddos-guard.net"
+  ]
+}
