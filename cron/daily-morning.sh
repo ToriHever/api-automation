@@ -23,7 +23,7 @@ export NODE_ENV=production
 export PATH="/usr/bin:/bin:/usr/local/bin:$PATH"
 
 # Создание структуры папок логов если не существует
-mkdir -p logs/services/{topvisor,wordstat,clarity,ga4,gsc,yandex-metrika}
+mkdir -p logs/services/{topvisor,wordstat,clarity,ga4,gsc,yandex-metrika,yandex-serp}
 mkdir -p logs/system
 mkdir -p logs/errors
 
