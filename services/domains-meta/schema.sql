@@ -7,7 +7,7 @@ CREATE SCHEMA IF NOT EXISTS l7;
 
 CREATE TABLE IF NOT EXISTS l7.domains_meta_scan (
     id              SERIAL PRIMARY KEY,
-    client_id       BIGINT REFERENCES l7.clients(id),
+    client_id       BIGINT,
     domain          TEXT NOT NULL,
     scanned_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     status_code     INTEGER,
