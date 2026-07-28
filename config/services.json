@@ -60,7 +60,7 @@
   },
   "yandex-serp": {
     "enabled": true,
-    "priority": 1.5,
+    "schedule": "0 12 * * *",
     "timeout": 600000,
     "retries": 2,
     "dateOffset": 0,
