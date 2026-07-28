@@ -70,11 +70,12 @@ class DomainsMetaCollector extends BaseCollector {
      */
     async fetchData() {
         const result = await this.dbManager.query(
-            `SELECT id, domain
+            `SELECT id, clean_domain AS domain
              FROM l7.clients
              WHERE is_forbidden = false
                AND has_digits = false
-               AND is_ip = false`
+               AND is_ip = false
+               AND clean_domain IS NOT NULL`
         );
 
         this.logger.info(`К обработке: ${result.rows.length} доменов`);
