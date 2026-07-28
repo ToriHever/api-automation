@@ -1,0 +1,26 @@
+{
+  "name": "Domains Meta Parser",
+  "description": "Сбор мета-информации (title/description/keywords/h1 и т.д.) по доменам из l7.clients через Puppeteer, без скриншотов",
+  "timeout": 30000,
+  "parallelLimit": 5,
+  "delayBetweenBatches": 1000,
+  "captchaMaxRetries": 2,
+  "captchaRecheckDelayMs": 3000,
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "captchaKeywords": [
+    "captcha",
+    "recaptcha",
+    "hcaptcha",
+    "cloudflare",
+    "just a moment",
+    "checking your browser",
+    "please verify",
+    "bot detection",
+    "are you human",
+    "robot",
+    "verify you are",
+    "ddos protection",
+    "challenge",
+    "turnstile"
+  ]
+}

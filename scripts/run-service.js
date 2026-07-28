@@ -12,7 +12,8 @@ async function getCollector(serviceName) {
         'ga4': () => require('../services/ga4/GA4Collector'),
         'gsc': () => require('../services/gsc/GSCCollector'),
         'yandex-metrika': () => require('../services/yandex-metrika/YandexMetrikaCollector'),
-        'yandex-serp': () => require('../services/yandex-serp/YandexSerpCollector')
+        'yandex-serp': () => require('../services/yandex-serp/YandexSerpCollector'),
+        'domains-meta': () => require('../services/domains-meta/DomainsMetaCollector')
     };
 
     if (!collectorsMap[serviceName]) {
@@ -53,7 +54,8 @@ function loadServicesConfig() {
         ga4: { enabled: false, priority: 4 },
         gsc: { enabled: false, priority: 5 },
         'yandex-metrika': { enabled: false, priority: 6 },
-        'yandex-serp': { enabled: false, priority: 7 }
+        'yandex-serp': { enabled: false, priority: 7 },
+        'domains-meta': { enabled: false, priority: 8 }
     };
 }
 
@@ -145,6 +147,7 @@ function showHelp() {
   gsc              Google Search Console
   yandex-metrika   Яндекс.Метрика
   yandex-serp      Yandex Search API (полная выдача, платный)
+  domains-meta     Мета-информация по доменам l7.clients (Puppeteer)
 
 ОПЦИИ:
   -s, --service <name>     Запустить конкретный сервис

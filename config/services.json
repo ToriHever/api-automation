@@ -66,5 +66,13 @@
     "dateOffset": 0,
     "description": "Yandex Search API — полная выдача (ТОП-N, платный API, пока в рамках гранта — работает бесплатно) по фиксированному списку запросов. Данные берутся за текущий день. Запускается вместе с topvisor/gsc в общем утреннем батче.",
     "env_prefix": "YANDEX_SEARCH_"
+  },
+  "domains-meta": {
+    "enabled": false,
+    "priority": 8,
+    "timeout": 1800000,
+    "retries": 1,
+    "description": "Сбор мета-информации (title/description/keywords/h1) по доменам из l7.clients через Puppeteer. Требует файл куки (DOMAINS_META_COOKIES_FILE) — включать вручную после настройки.",
+    "env_prefix": "DOMAINS_META_"
   }
 }
