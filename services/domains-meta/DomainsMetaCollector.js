@@ -228,30 +228,33 @@ class DomainsMetaCollector extends BaseCollector {
             return;
         }
 
+        // Один браузер на весь прогон — домены обрабатываются как вкладки (newPage()),
+        // а не отдельными процессами Chromium. Запуск браузера — тяжёлая операция,
+        // 5 параллельных launch() на VDS с ограниченными ресурсами конкурируют за CPU
+        // и работают МЕДЛЕННЕЕ, чем последовательные вкладки в одном браузере.
+        const browser = await puppeteer.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+        });
+
         const batches = this.chunkArray(clients, this.config.parallelLimit);
         const allRecords = [];
 
-        for (let i = 0; i < batches.length; i++) {
-            const batch = batches[i];
-            this.logger.info(`Пакет ${i + 1}/${batches.length} (${batch.length} доменов)`);
+        try {
+            for (let i = 0; i < batches.length; i++) {
+                const batch = batches[i];
+                this.logger.info(`Пакет ${i + 1}/${batches.length} (${batch.length} доменов)`);
 
-            const results = await Promise.all(batch.map(async (client) => {
-                const browser = await puppeteer.launch({
-                    headless: true,
-                    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
-                });
-                try {
-                    return await this.scrapeOne(client, browser);
-                } finally {
-                    await browser.close().catch(() => {});
+                const results = await Promise.all(batch.map(client => this.scrapeOne(client, browser)));
+
+                allRecords.push(...results);
+
+                if (i < batches.length - 1) {
+                    await this.delay(this.config.delayBetweenBatches);
                 }
-            }));
-
-            allRecords.push(...results);
-
-            if (i < batches.length - 1) {
-                await this.delay(this.config.delayBetweenBatches);
             }
+        } finally {
+            await browser.close().catch(() => {});
         }
 
         await this.bulkInsertRecords(allRecords);
