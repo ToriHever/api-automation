@@ -59,8 +59,8 @@
     "env_prefix": "YANDEX_METRIKA_"
   },
   "yandex-serp": {
-    "enabled": false,
-    "schedule": "0 14 * * *",
+    "enabled": true,
+    "schedule": "0 12 * * *",
     "priority": 7,
     "timeout": 600000,
     "retries": 2,
