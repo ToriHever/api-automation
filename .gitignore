@@ -8,3 +8,4 @@ backups/
 tokens/
 
 *.csv
+services/domains-meta/cookies*.json
