@@ -55,21 +55,32 @@ COMMENT ON VIEW wordstat.dynamics_range_view IS 'wordstat.dynamics_range с по
 -- ============================================================
 -- Дневная детализация (PERIOD_DAILY) — ОТДЕЛЬНАЯ таблица и очередь,
 -- чтобы не смешивать с помесячными данными выше (wordstat.dynamics_range).
--- Заполняется scripts/wordstat-dynamics-range-daily.js.
+-- Заполняется scripts/wordstat-dynamics-range-daily.js, автоматически
+-- (ежемесячный cron) — PERIOD_DAILY у Wordstat хранит только 60 дней,
+-- без периодического дообора старые дни теряются безвозвратно.
+--
+-- cycle_start — первое число месяца, в котором фраза была поставлена в
+-- очередь на сбор; UNIQUE(phrase, cycle_start), а не просто UNIQUE(phrase),
+-- чтобы каждый новый месячный цикл ставил фразы в очередь заново, а не
+-- находил их уже 'done' от прошлого раза и пропускал навсегда.
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS wordstat.dynamics_range_daily_queue (
     id SERIAL PRIMARY KEY,
-    phrase TEXT NOT NULL UNIQUE,
+    phrase TEXT NOT NULL,
+    cycle_start DATE NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     attempts INT NOT NULL DEFAULT 0,
     last_error TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    processed_at TIMESTAMP
+    processed_at TIMESTAMP,
+    UNIQUE (phrase, cycle_start)
 );
 
 CREATE INDEX IF NOT EXISTS idx_dynamics_range_daily_queue_status
     ON wordstat.dynamics_range_daily_queue(status);
+CREATE INDEX IF NOT EXISTS idx_dynamics_range_daily_queue_cycle
+    ON wordstat.dynamics_range_daily_queue(cycle_start);
 
 CREATE TABLE IF NOT EXISTS wordstat.dynamics_range_daily (
     request_id INTEGER NOT NULL REFERENCES common.requests(request_id),
