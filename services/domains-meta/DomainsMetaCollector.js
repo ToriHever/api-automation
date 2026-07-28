@@ -238,7 +238,8 @@ class DomainsMetaCollector extends BaseCollector {
         });
 
         const batches = this.chunkArray(clients, this.config.parallelLimit);
-        const allRecords = [];
+        let captchaCount = 0;
+        let errorCount = 0;
 
         try {
             for (let i = 0; i < batches.length; i++) {
@@ -247,7 +248,14 @@ class DomainsMetaCollector extends BaseCollector {
 
                 const results = await Promise.all(batch.map(client => this.scrapeOne(client, browser)));
 
-                allRecords.push(...results);
+                // Пишем в БД сразу после пачки, а не копим всё до конца прогона —
+                // если скрипт упадёт на середине списка, уже собранные данные не потеряются.
+                await this.bulkInsertRecords(results);
+
+                this.stats.processed += results.length;
+                this.stats.inserted += results.length;
+                captchaCount += results.filter(r => r.is_captcha).length;
+                errorCount += results.filter(r => !r.success && !r.is_captcha).length;
 
                 if (i < batches.length - 1) {
                     await this.delay(this.config.delayBetweenBatches);
@@ -257,12 +265,8 @@ class DomainsMetaCollector extends BaseCollector {
             await browser.close().catch(() => {});
         }
 
-        await this.bulkInsertRecords(allRecords);
-
-        this.stats.processed = allRecords.length;
-        this.stats.inserted = allRecords.length;
-        this.stats.errors += allRecords.filter(r => !r.success && !r.is_captcha).length;
-        this.logger.info(`✅ Записано: ${allRecords.length} строк (капча: ${allRecords.filter(r => r.is_captcha).length}, ошибок: ${allRecords.filter(r => !r.success && !r.is_captcha).length})`);
+        this.stats.errors += errorCount;
+        this.logger.info(`✅ Записано: ${this.stats.inserted} строк (капча: ${captchaCount}, ошибок: ${errorCount})`);
     }
 
     async bulkInsertRecords(records) {
