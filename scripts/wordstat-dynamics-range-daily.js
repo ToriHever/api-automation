@@ -4,10 +4,21 @@
 // Пишет в ОТДЕЛЬНУЮ таблицу wordstat.dynamics_range_daily (не смешивается с
 // помесячными данными в wordstat.dynamics_range).
 //
-// Список фраз тот же: services/wordstat/keywords/dynamics_range_keywords.txt
-// Квота (100 запросов/час) общая с обычным сбором wordstat.
+// PERIOD_DAILY у Wordstat хранит только 60 дней — поэтому очередь циклическая
+// (cycle_start = 1-е число месяца): каждый новый месяц все фразы из файла
+// ставятся в очередь заново, а не находятся уже 'done' от прошлого раза.
+// Без этого дневные данные, не собранные за очередной месяц, терялись бы
+// безвозвратно, как только выкатятся за пределы 60-дневного окна.
 //
-// Запуск: node scripts/wordstat-dynamics-range-daily.js
+// Список фраз тот же: services/wordstat/keywords/dynamics_range_keywords.txt
+// Квота (100 запросов/час) общая с обычным сбором wordstat — top (1-2 число)
+// и dynamics (3-5 число) уже заняты по расписанию, поэтому этот скрипт стоит
+// вешать на дни, когда квота простаивает, например:
+//
+//   # WordStat dynamics-range-daily — 6-10 число, каждый час с 8:00 до 20:00
+//   0 8-20 6-10 * * cd /opt/api-automation && node scripts/wordstat-dynamics-range-daily.js >> logs/services/wordstat/daily_$(date +\%Y\%m\%d).log 2>&1
+//
+// Запуск вручную (если нужно срочно): node scripts/wordstat-dynamics-range-daily.js
 
 require('dotenv').config();
 const axios = require('axios');
@@ -31,6 +42,11 @@ const rangeStartDate = new Date(today);
 rangeStartDate.setDate(rangeStartDate.getDate() - 59);
 const RANGE_START = formatDate(rangeStartDate);
 
+// Ключ цикла — 1-е число текущего месяца. Новый месяц => новый цикл => все
+// фразы из файла ставятся в очередь заново, даже если в прошлом цикле уже
+// дошли до 'done' (см. UNIQUE(phrase, cycle_start) в схеме).
+const CYCLE_START = formatDate(new Date(today.getFullYear(), today.getMonth(), 1));
+
 const MAX_PER_RUN = parseInt(process.env.WORDSTAT_MAX_PER_RUN || '80', 10);
 const KEYWORDS_FILE = process.env.WORDSTAT_RANGE_KEYWORDS_FILE || 'dynamics_range_keywords.txt';
 
@@ -47,30 +63,32 @@ function loadKeywords() {
         .filter(line => line.length > 0 && !line.startsWith('#'));
 }
 
-async function ensureQueue(db, keywords) {
+async function ensureQueue(db, keywords, cycleStart) {
     for (const phrase of keywords) {
         await db.query(
-            `INSERT INTO wordstat.dynamics_range_daily_queue (phrase) VALUES ($1) ON CONFLICT (phrase) DO NOTHING`,
-            [phrase]
+            `INSERT INTO wordstat.dynamics_range_daily_queue (phrase, cycle_start)
+             VALUES ($1, $2) ON CONFLICT (phrase, cycle_start) DO NOTHING`,
+            [phrase, cycleStart]
         );
     }
 }
 
-async function getNextBatch(db, limit) {
+async function getNextBatch(db, limit, cycleStart) {
     const result = await db.query(
         `SELECT id, phrase FROM wordstat.dynamics_range_daily_queue
-         WHERE status IN ('pending', 'error') AND attempts < 5
+         WHERE cycle_start = $2 AND status IN ('pending', 'error') AND attempts < 5
          ORDER BY attempts ASC, id ASC
          LIMIT $1`,
-        [limit]
+        [limit, cycleStart]
     );
     return result.rows;
 }
 
-async function getRemainingCount(db) {
+async function getRemainingCount(db, cycleStart) {
     const result = await db.query(
         `SELECT COUNT(*)::int AS cnt FROM wordstat.dynamics_range_daily_queue
-         WHERE status IN ('pending', 'error') AND attempts < 5`
+         WHERE cycle_start = $1 AND status IN ('pending', 'error') AND attempts < 5`,
+        [cycleStart]
     );
     return result.rows[0].cnt;
 }
@@ -151,6 +169,7 @@ async function main() {
     }
 
     console.log(`Диапазон дат: ${RANGE_START} - ${RANGE_END} (последние 60 дней от сегодня)`);
+    console.log(`Цикл: ${CYCLE_START} (месяц)`);
 
     const db = new DatabaseManager('wordstat-dynamics-range-daily');
     await db.connect();
@@ -161,10 +180,10 @@ async function main() {
 
         const keywords = loadKeywords();
         console.log(`Фраз в файле: ${keywords.length}`);
-        await ensureQueue(db, keywords);
+        await ensureQueue(db, keywords, CYCLE_START);
 
-        const batch = await getNextBatch(db, MAX_PER_RUN);
-        const remaining = await getRemainingCount(db);
+        const batch = await getNextBatch(db, MAX_PER_RUN, CYCLE_START);
+        const remaining = await getRemainingCount(db, CYCLE_START);
         console.log(`Осталось в очереди: ${remaining}, беру в этот запуск: ${batch.length}`);
 
         if (batch.length === 0) {
