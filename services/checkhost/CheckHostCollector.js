@@ -131,11 +131,12 @@ class CheckHostCollector extends BaseCollector {
     }
 
     /**
-     * IP резолвится через Check-Host (check-dns), Location/AS/ISP-Org —
-     * отдельным запросом к ip-api.com по каноничному IP (Check-Host отдаёт
-     * геоданные только своих проверяющих нод, не целевого хоста).
+     * IP резолвится через Check-Host (check-dns). Ноды Check-Host сами по
+     * себе не ограничивают частоту запросов, поэтому этот шаг вызывается
+     * параллельно пачками (см. processAndSaveData) — в отличие от geoip-
+     * обогащения, которое упирается в реальный rate limit ip-api.com.
      */
-    async checkOne(client) {
+    async resolveDns(client) {
         const record = {
             client_id: client.id, domain: client.domain, request_id: null,
             resolved_ips: JSON.stringify([]), ip: null, country: null, region: null, city: null,
@@ -158,10 +159,22 @@ class CheckHostCollector extends BaseCollector {
 
             record.dns_success = true;
             record.ip = resolvedIps[0].ip;
+        } catch (error) {
+            record.error_message = error.message;
+        }
 
-            // ip-api.com free tier: до 45 запросов в минуту
-            await this.delay(this.config.geoIpDelayMs);
+        return record;
+    }
 
+    /**
+     * Location/AS/ISP-Org — отдельным запросом к ip-api.com по каноничному
+     * IP (Check-Host отдаёт геоданные только своих проверяющих нод, не
+     * целевого хоста). Вызывается строго последовательно с паузой перед
+     * каждым запросом — свободный тариф ip-api.com ограничен 45 запросами
+     * в минуту, распараллелить этот шаг нельзя.
+     */
+    async enrichGeoIp(record) {
+        try {
             const geo = await this.geoIpLookup(record.ip);
             if (geo && geo.status === 'success') {
                 record.geoip_success = true;
@@ -184,34 +197,53 @@ class CheckHostCollector extends BaseCollector {
         return record;
     }
 
+    chunkArray(arr, size) {
+        const chunks = [];
+        for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+        return chunks;
+    }
+
+    /**
+     * Домены резолвятся пачками параллельно (dnsParallelLimit) — это и есть
+     * узкое место, которое раньше делалось строго по одному. GeoIP-запросы
+     * внутри пачки идут последовательно с паузой geoIpDelayMs — этот шаг
+     * принципиально нельзя ускорить параллелизмом, не упершись в лимит
+     * ip-api.com. Пишем в БД сразу после каждого домена (upsertRecord), а не
+     * копим всё до конца прогона — если скрипт упадёт на середине списка,
+     * уже собранные данные не потеряются.
+     */
     async processAndSaveData(clients) {
         if (!clients || clients.length === 0) {
             this.logger.warn('Нет доменов для обработки');
             return;
         }
 
-        for (let i = 0; i < clients.length; i++) {
-            const client = clients[i];
-            const record = await this.checkOne(client);
+        const batches = this.chunkArray(clients, this.config.dnsParallelLimit);
 
-            // Пишем в БД сразу после каждого домена, а не копим всё до конца
-            // прогона — если скрипт упадёт на середине списка, уже собранные
-            // данные не потеряются. upsertRecord перезаписывает строку по
-            // домену независимо от того, была ли она уже сегодня.
-            await this.upsertRecord(record);
+        for (let i = 0; i < batches.length; i++) {
+            const batch = batches[i];
+            const dnsRecords = await Promise.all(batch.map(client => this.resolveDns(client)));
 
-            this.stats.processed++;
-            this.stats.inserted++;
-            if (!record.dns_success || !record.geoip_success) {
-                this.stats.warnings.push(`${client.domain}: ${record.error_message}`);
+            for (const record of dnsRecords) {
+                if (record.dns_success) {
+                    // ip-api.com free tier: до 45 запросов в минуту
+                    await this.delay(this.config.geoIpDelayMs);
+                    await this.enrichGeoIp(record);
+                }
+
+                await this.upsertRecord(record);
+
+                this.stats.processed++;
+                this.stats.inserted++;
+                if (!record.dns_success || !record.geoip_success) {
+                    this.stats.warnings.push(`${record.domain}: ${record.error_message}`);
+                }
             }
 
-            if ((i + 1) % 50 === 0) {
-                this.logger.info(`Обработано ${i + 1}/${clients.length} доменов`);
-            }
+            this.logger.info(`Обработано ${this.stats.processed}/${clients.length} доменов`);
 
-            if (i < clients.length - 1) {
-                await this.delay(this.config.delayBetweenDomains);
+            if (i < batches.length - 1) {
+                await this.delay(this.config.delayBetweenBatches);
             }
         }
 
