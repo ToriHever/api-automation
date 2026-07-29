@@ -1,0 +1,14 @@
+{
+  "name": "CheckHost Domain Parser",
+  "description": "Резолв IP доменов через Check-Host API (check-dns) + обогащение геоданными (Location/AS/ISP-Org) через ip-api.com",
+  "siteTypeFilter": "СМИ",
+  "checkHostBaseUrl": "https://check-host.net",
+  "maxNodes": 2,
+  "dnsPollIntervalMs": 2000,
+  "dnsPollMaxAttempts": 15,
+  "requestTimeout": 15000,
+  "delayBetweenDomains": 500,
+  "geoIpApiUrl": "http://ip-api.com/json",
+  "geoIpFields": "status,message,country,regionName,city,isp,org,as,query",
+  "geoIpDelayMs": 1400
+}

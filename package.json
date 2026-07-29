@@ -16,6 +16,7 @@
     "collect:yandex-metrika": "node scripts/run-service.js yandex-metrika",
     "collect:yandex-serp": "node scripts/run-service.js yandex-serp",
     "collect:domains-meta": "node scripts/run-service.js domains-meta",
+    "collect:checkhost": "node scripts/run-service.js checkhost",
     "test": "node tests/test-connections.js",
     "test:connections": "node tests/test-connections.js",
     "test:notifications": "node tests/test-notifications.js",
