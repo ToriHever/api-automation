@@ -30,13 +30,13 @@ class CheckHostCollector extends BaseCollector {
     /**
      * Список доменов для обработки — из l7.clients, за вычетом мусора
      * (запрещённые, IP-адреса, домены с цифрами), отфильтрованных по категории
-     * site_type (проставляется коллектором domains-meta), а также доменов,
-     * уже проверенных СЕГОДНЯ — так прогон можно спокойно перезапускать после
-     * обрыва соединения. Флаг FORCE_OVERRIDE=true отключает пропуск.
+     * site_type (проставляется коллектором domains-meta по последней доступной
+     * классификации — не обязательно за сегодня). checkhost не завязан на
+     * расписание/статус domains-meta и не пропускает домены по дате: каждый
+     * прогон обрабатывает весь список и перезаписывает (upsert) свою строку
+     * по домену — см. upsertRecord.
      */
     async fetchData() {
-        const skipAlreadyScannedToday = process.env.FORCE_OVERRIDE !== 'true';
-
         const result = await this.dbManager.query(
             `SELECT c.id, c.clean_domain AS domain
              FROM l7.clients c
@@ -47,16 +47,11 @@ class CheckHostCollector extends BaseCollector {
                AND EXISTS (
                    SELECT 1 FROM l7.domains_meta_scan m
                    WHERE m.domain = c.clean_domain AND m.site_type = $1
-               )
-               AND ($2 = false OR NOT EXISTS (
-                   SELECT 1 FROM l7.checkhost_scan s
-                   WHERE s.domain = c.clean_domain
-                     AND s.checked_at::date = CURRENT_DATE
-               ))`,
-            [this.siteTypeFilter, skipAlreadyScannedToday]
+               )`,
+            [this.siteTypeFilter]
         );
 
-        this.logger.info(`К обработке: ${result.rows.length} доменов (категория: ${this.siteTypeFilter})${skipAlreadyScannedToday ? ', уже проверенные сегодня пропущены' : ', FORCE_OVERRIDE — проверяю всё заново'}`);
+        this.logger.info(`К обработке: ${result.rows.length} доменов (категория: ${this.siteTypeFilter})`);
         return result.rows;
     }
 
@@ -201,8 +196,9 @@ class CheckHostCollector extends BaseCollector {
 
             // Пишем в БД сразу после каждого домена, а не копим всё до конца
             // прогона — если скрипт упадёт на середине списка, уже собранные
-            // данные не потеряются.
-            await this.insertRecord(record);
+            // данные не потеряются. upsertRecord перезаписывает строку по
+            // домену независимо от того, была ли она уже сегодня.
+            await this.upsertRecord(record);
 
             this.stats.processed++;
             this.stats.inserted++;
@@ -222,16 +218,22 @@ class CheckHostCollector extends BaseCollector {
         this.logger.info(`✅ Записано: ${this.stats.inserted} строк`);
     }
 
-    async insertRecord(record) {
+    async upsertRecord(record) {
         const columns = [
             'client_id', 'domain', 'request_id', 'resolved_ips', 'ip', 'country', 'region', 'city',
             'isp', 'org', 'as_number', 'as_name', 'dns_success', 'geoip_success', 'error_message'
         ];
         const values = columns.map(col => record[col]);
         const placeholders = values.map((_, idx) => `$${idx + 1}`);
+        const updateSet = columns
+            .filter(col => col !== 'domain')
+            .map(col => `${col} = EXCLUDED.${col}`)
+            .concat('checked_at = CURRENT_TIMESTAMP')
+            .join(', ');
 
         await this.dbManager.query(
-            `INSERT INTO l7.checkhost_scan (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`,
+            `INSERT INTO l7.checkhost_scan (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
+             ON CONFLICT (domain) DO UPDATE SET ${updateSet}`,
             values
         );
     }
