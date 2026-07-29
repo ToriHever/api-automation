@@ -66,19 +66,31 @@ class DomainsMetaCollector extends BaseCollector {
 
     /**
      * Список доменов для обработки — из l7.clients, за вычетом мусора
-     * (запрещённые, IP-адреса, домены с цифрами).
+     * (запрещённые, IP-адреса, домены с цифрами), а также доменов, уже
+     * отсканированных СЕГОДНЯ — так прогон можно спокойно перезапускать
+     * после обрыва соединения: уже готовые домены не трогаются повторно,
+     * обработка продолжается с того места, где оборвалась.
+     * Флаг FORCE_OVERRIDE=true отключает этот пропуск (пересканировать всё заново).
      */
     async fetchData() {
+        const skipAlreadyScannedToday = process.env.FORCE_OVERRIDE !== 'true';
+
         const result = await this.dbManager.query(
-            `SELECT id, clean_domain AS domain
-             FROM l7.clients
-             WHERE is_forbidden = false
-               AND has_digits = false
-               AND is_ip = false
-               AND clean_domain IS NOT NULL`
+            `SELECT c.id, c.clean_domain AS domain
+             FROM l7.clients c
+             WHERE c.is_forbidden = false
+               AND c.has_digits = false
+               AND c.is_ip = false
+               AND c.clean_domain IS NOT NULL
+               AND ($1 = false OR NOT EXISTS (
+                   SELECT 1 FROM l7.domains_meta_scan m
+                   WHERE m.domain = c.clean_domain
+                     AND m.scanned_at::date = CURRENT_DATE
+               ))`,
+            [skipAlreadyScannedToday]
         );
 
-        this.logger.info(`К обработке: ${result.rows.length} доменов`);
+        this.logger.info(`К обработке: ${result.rows.length} доменов${skipAlreadyScannedToday ? ' (уже отсканированные сегодня пропущены)' : ' (FORCE_OVERRIDE — пересканирую всё)'}`);
         return result.rows;
     }
 
