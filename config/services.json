@@ -74,5 +74,13 @@
     "retries": 1,
     "description": "Сбор мета-информации (title/description/keywords/h1) по доменам из l7.clients через Puppeteer. Требует файл куки (DOMAINS_META_COOKIES_FILE) — включать вручную после настройки.",
     "env_prefix": "DOMAINS_META_"
+  },
+  "checkhost": {
+    "enabled": false,
+    "priority": 9,
+    "timeout": 1800000,
+    "retries": 1,
+    "description": "IP/Location/AS/ISP-Org по доменам из l7.clients (категория задаётся site_type, по умолчанию 'СМИ') через Check-Host API (check-dns) + ip-api.com. Разовый/ручной запуск.",
+    "env_prefix": "CHECKHOST_"
   }
 }
