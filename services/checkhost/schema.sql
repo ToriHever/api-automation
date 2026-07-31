@@ -36,6 +36,16 @@ COMMENT ON COLUMN l7.checkhost_scan.as_name IS 'Название организ�
 COMMENT ON COLUMN l7.checkhost_scan.dns_success IS 'true, если удалось резолвить хотя бы один IP через Check-Host.';
 COMMENT ON COLUMN l7.checkhost_scan.geoip_success IS 'true, если ip-api.com вернул успешный ответ (status=success) по каноничному IP.';
 
+-- Миграционная чистка: до перехода на UPSERT таблица какое-то время велась
+-- как append-log и могла накопить несколько строк на один domain. Уникальный
+-- индекс ниже такого не допустит, поэтому сначала схлопываем дубликаты,
+-- оставляя только запись с максимальным id (самую свежую) на domain.
+-- Идемпотентно — если дублей нет, ничего не удаляет.
+DELETE FROM l7.checkhost_scan a
+USING l7.checkhost_scan b
+WHERE a.domain = b.domain
+  AND a.id < b.id;
+
 -- Уникальный индекс по domain — опора для UPSERT (ON CONFLICT (domain)) и
 -- гарантия «один домен — одна строка».
 DROP INDEX IF EXISTS l7.idx_checkhost_scan_domain;
