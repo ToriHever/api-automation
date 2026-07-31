@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS l7.checkhost_scan (
 );
 
 COMMENT ON TABLE l7.checkhost_scan IS 'Снимок проверки доменов из l7.clients: IP резолвится через Check-Host API (check-dns), Location/AS/ISP-Org — через ip-api.com по резолвленному IP. Одна строка = один домен, перезаписывается (UPSERT по domain) при каждом прогоне.';
+COMMENT ON COLUMN l7.checkhost_scan.client_id IS 'Не заполняется коллектором: один domain может встречаться у нескольких client_id в l7.clients, а строка в этой таблице одна на домен. Оставлено для обратной совместимости, не использовать.';
 COMMENT ON COLUMN l7.checkhost_scan.checked_at IS 'Время последнего прогона, в котором обновлялась эта строка.';
 COMMENT ON COLUMN l7.checkhost_scan.resolved_ips IS 'Все IP (A-записи), увиденные на разных нодах Check-Host, с частотой встречаемости — [{"ip":"1.2.3.4","count":2}, ...].';
 COMMENT ON COLUMN l7.checkhost_scan.ip IS 'Каноничный IP — самый частый среди resolved_ips (при равенстве — первый увиденный).';
