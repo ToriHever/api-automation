@@ -35,10 +35,16 @@ class CheckHostCollector extends BaseCollector {
      * расписание/статус domains-meta и не пропускает домены по дате: каждый
      * прогон обрабатывает весь список и перезаписывает (upsert) свою строку
      * по домену — см. upsertRecord.
+     *
+     * Один clean_domain может встречаться у нескольких клиентов (client_id),
+     * поэтому берём DISTINCT по домену — иначе один и тот же домен
+     * обрабатывался бы несколько раз (в l7.checkhost_scan он всё равно один,
+     * т.к. там уникальность по domain, но лишние прогоны check-host/ip-api
+     * тратятся впустую).
      */
     async fetchData() {
         const result = await this.dbManager.query(
-            `SELECT c.id, c.clean_domain AS domain
+            `SELECT DISTINCT c.clean_domain AS domain
              FROM l7.clients c
              WHERE c.is_forbidden = false
                AND c.has_digits = false
@@ -138,7 +144,7 @@ class CheckHostCollector extends BaseCollector {
      */
     async resolveDns(client) {
         const record = {
-            client_id: client.id, domain: client.domain, request_id: null,
+            domain: client.domain, request_id: null,
             resolved_ips: JSON.stringify([]), ip: null, country: null, region: null, city: null,
             isp: null, org: null, as_number: null, as_name: null,
             dns_success: false, geoip_success: false, error_message: null
@@ -252,7 +258,7 @@ class CheckHostCollector extends BaseCollector {
 
     async upsertRecord(record) {
         const columns = [
-            'client_id', 'domain', 'request_id', 'resolved_ips', 'ip', 'country', 'region', 'city',
+            'domain', 'request_id', 'resolved_ips', 'ip', 'country', 'region', 'city',
             'isp', 'org', 'as_number', 'as_name', 'dns_success', 'geoip_success', 'error_message'
         ];
         const values = columns.map(col => record[col]);
