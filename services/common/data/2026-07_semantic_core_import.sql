@@ -23,13 +23,14 @@
 
 BEGIN;
 
--- 0. Синхронизация SERIAL-последовательностей перед вставками. Если в hubs/clusters/
+-- 0. Синхронизация SERIAL-последовательностей перед вставками. Если в hubs/
 -- requests раньше вставляли строки с явным id (не через DEFAULT), sequence остаётся
 -- позади реальных данных, и следующий nextval() коллизирует с уже занятым id
 -- (именно так упал прогон: hub_id=16 уже существовал). pg_get_serial_sequence сам
 -- находит имя sequence, не завязываемся на угаданное имя. Безопасно перезапускать.
+-- common.clusters.cluster_id вообще без sequence/DEFAULT (pg_get_serial_sequence
+-- вернул NULL при проверке на проде) — для него id проставляется вручную в шаге 3.
 SELECT setval(pg_get_serial_sequence('common.hubs', 'hub_id'), COALESCE((SELECT MAX(hub_id) FROM common.hubs), 1));
-SELECT setval(pg_get_serial_sequence('common.clusters', 'cluster_id'), COALESCE((SELECT MAX(cluster_id) FROM common.clusters), 1));
 SELECT setval(pg_get_serial_sequence('common.requests', 'request_id'), COALESCE((SELECT MAX(request_id) FROM common.requests), 1));
 
 -- 1. Переименование существующих hub_name (id сохраняется)
@@ -56,8 +57,13 @@ SELECT v.name FROM (VALUES
 ) AS v(name)
 WHERE NOT EXISTS (SELECT 1 FROM common.hubs h WHERE h.hub_name = v.name);
 
--- 3. Новые значения cluster_name (все значения колонки 'Кластер' файла - в common.clusters их не было)
-INSERT INTO common.clusters (cluster_name)
+-- 3. Новые значения cluster_name (все значения колонки 'Кластер' файла - в common.clusters их не было).
+-- cluster_id проставляем вручную (MAX(cluster_id) + порядковый номер) — у колонки нет
+-- ни sequence, ни DEFAULT, id тут исторически проставлялся руками при вставке.
+WITH cluster_base AS (
+    SELECT COALESCE(MAX(cluster_id), 0) AS base_id FROM common.clusters
+),
+new_cluster_names AS (
 SELECT v.name FROM (VALUES
     ('Cloudflare'),
     ('Анализ'),
@@ -99,7 +105,11 @@ SELECT v.name FROM (VALUES
     ('Цены'),
     ('Что')
 ) AS v(name)
-WHERE NOT EXISTS (SELECT 1 FROM common.clusters c WHERE c.cluster_name = v.name);
+WHERE NOT EXISTS (SELECT 1 FROM common.clusters c WHERE c.cluster_name = v.name)
+)
+INSERT INTO common.clusters (cluster_id, cluster_name)
+SELECT (SELECT base_id FROM cluster_base) + ROW_NUMBER() OVER (), name
+FROM new_cluster_names;
 
 -- 4. Staging: сырые строки файла как есть
 CREATE TEMP TABLE _semantic_core_import (
