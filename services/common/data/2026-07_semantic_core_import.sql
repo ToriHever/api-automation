@@ -23,6 +23,15 @@
 
 BEGIN;
 
+-- 0. Синхронизация SERIAL-последовательностей перед вставками. Если в hubs/clusters/
+-- requests раньше вставляли строки с явным id (не через DEFAULT), sequence остаётся
+-- позади реальных данных, и следующий nextval() коллизирует с уже занятым id
+-- (именно так упал прогон: hub_id=16 уже существовал). pg_get_serial_sequence сам
+-- находит имя sequence, не завязываемся на угаданное имя. Безопасно перезапускать.
+SELECT setval(pg_get_serial_sequence('common.hubs', 'hub_id'), COALESCE((SELECT MAX(hub_id) FROM common.hubs), 1));
+SELECT setval(pg_get_serial_sequence('common.clusters', 'cluster_id'), COALESCE((SELECT MAX(cluster_id) FROM common.clusters), 1));
+SELECT setval(pg_get_serial_sequence('common.requests', 'request_id'), COALESCE((SELECT MAX(request_id) FROM common.requests), 1));
+
 -- 1. Переименование существующих hub_name (id сохраняется)
 UPDATE common.hubs SET hub_name = 'DDoS' WHERE hub_id = 1;
 UPDATE common.hubs SET hub_name = 'Сайт' WHERE hub_id = 2;
