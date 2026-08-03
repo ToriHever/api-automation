@@ -17,6 +17,7 @@
     "collect:yandex-serp": "node scripts/run-service.js yandex-serp",
     "collect:domains-meta": "node scripts/run-service.js domains-meta",
     "collect:checkhost": "node scripts/run-service.js checkhost",
+    "notes-bot": "node scripts/notes-bot.js",
     "test": "node tests/test-connections.js",
     "test:connections": "node tests/test-connections.js",
     "test:notifications": "node tests/test-notifications.js",
