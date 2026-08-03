@@ -79,35 +79,69 @@ async function handleCategoryChoice(chatId, categoryId, categoryName, callbackQu
     await answerCallback(callbackQueryId);
     await sendMessage(
         chatId,
-        `Категория: <b>${categoryName}</b>\n\nТеперь пришлите одним сообщением в формате:\n` +
-        `<code>ГГГГ-ММ-ДД | Заголовок | Описание</code>\n(описание можно не указывать)`
+        `Категория: <b>${categoryName}</b>\n\nТеперь пришлите заметки в формате:\n` +
+        `<code>ГГГГ-ММ-ДД | Заголовок | Описание</code>\n` +
+        `Можно несколько заметок сразу — каждая с новой строки (описание можно не указывать)`
     );
+}
+
+/**
+ * Разбирает одну строку "ГГГГ-ММ-ДД | Заголовок | Описание".
+ * Возвращает { dateStr, title, description } или { error } если строка невалидна.
+ */
+function parseNoteLine(line) {
+    const parts = line.split('|').map(p => p.trim());
+    const [dateStr, title, description] = parts;
+
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return { error: 'дата должна быть первой и в формате ГГГГ-ММ-ДД' };
+    }
+    if (!title) {
+        return { error: 'пустой заголовок' };
+    }
+
+    return { dateStr, title, description: description || null };
 }
 
 async function handleNoteText(chatId, text) {
     const state = pending.get(chatId);
     if (!state) return false; // не в процессе создания заметки — игнорируем как обычное сообщение
 
-    const parts = text.split('|').map(p => p.trim());
-    const [dateStr, title, description] = parts;
-
-    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        await sendMessage(chatId, '⚠️ Дата должна быть первой и в формате ГГГГ-ММ-ДД. Формат: ГГГГ-ММ-ДД | Заголовок | Описание');
-        return true;
-    }
-    if (!title) {
-        await sendMessage(chatId, '⚠️ Заголовок не может быть пустым. Формат: ГГГГ-ММ-ДД | Заголовок | Описание');
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) {
+        await sendMessage(chatId, '⚠️ Пустое сообщение. Формат: ГГГГ-ММ-ДД | Заголовок | Описание (можно несколько строк)');
         return true;
     }
 
-    await db.query(
-        `INSERT INTO common.notes (title, description, event_date, category_id, created_by)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [title, description || null, dateStr, state.categoryId, String(chatId)]
-    );
+    const inserted = [];
+    const errors = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        const parsed = parseNoteLine(lines[i]);
+        if (parsed.error) {
+            errors.push(`Строка ${i + 1}: ${parsed.error}`);
+            continue;
+        }
+
+        await db.query(
+            `INSERT INTO common.notes (title, description, event_date, category_id, created_by)
+             VALUES ($1, $2, $3, $4, $5)`,
+            [parsed.title, parsed.description, parsed.dateStr, state.categoryId, String(chatId)]
+        );
+        inserted.push(`${parsed.title} (${parsed.dateStr})`);
+    }
 
     pending.delete(chatId);
-    await sendMessage(chatId, `✅ Заметка добавлена: <b>${title}</b> (${state.categoryName}, ${dateStr})`);
+
+    let response = `✅ Добавлено заметок: ${inserted.length} (категория: ${state.categoryName})`;
+    if (inserted.length > 0) {
+        response += `\n${inserted.map(t => `• ${t}`).join('\n')}`;
+    }
+    if (errors.length > 0) {
+        response += `\n\n⚠️ Пропущено строк: ${errors.length}\n${errors.join('\n')}`;
+    }
+
+    await sendMessage(chatId, response);
     return true;
 }
 
