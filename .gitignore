@@ -9,3 +9,4 @@ tokens/
 
 *.csv
 services/domains-meta/cookies*.json
+services/notes/.offset
