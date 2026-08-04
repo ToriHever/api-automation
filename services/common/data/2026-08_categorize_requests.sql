@@ -58,6 +58,12 @@
 --      расширена: глагол действия + любое ddos-упоминание (не только слово
 --      "атака" — "как сделать ddos" его не содержит), плюс добавлены формы
 --      'делать/делают/делает' (раньше был только 'сделать', другой корень).
+--   10. [cluster_id: Вредоносные (Покупка/Заказ)] "заказать защиту от ddos" ошибочно
+--      попадал в этот кластер по слову "заказать", хотя topic_id уже верно определял
+--      это как "защита" (легитимная покупка услуги, а не заказ атаки). Добавлено
+--      исключение на корень "защит" + сброс уже неверно проставленного cluster_id
+--      с прошлых прогонов (такие строки провалятся дальше по цепочке и корректно
+--      попадут в tier2-кластер "Защита").
 --
 -- Идемпотентно: каждый UPDATE — WHERE cluster_id IS NULL (или topic_id IS NULL),
 -- уже проставленные категории никогда не перезаписываются. Безопасно запускать
@@ -104,8 +110,15 @@ WHERE cluster_id IS NULL AND request ~* '(\mфлуд\w*|\mamplification\w*|\micm
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Софт/Скрипты)')
 WHERE cluster_id IS NULL AND request ~* '(\mпрограмм\w*|\mскачать\w*|\mpython\w*|\mпитон\w*|\mскрипт\w*|\mтермукс\w*|\mtermux\w*|\mбот\w*|\mприложение\w*|\mapk\w*|\mcmd\w*|\mtools\w*|\mclient\w*|\mпанель\w*|\mprogram\w*|\mтроян\w*|\mонлайн\w*|\monline\w*)';
 
+-- Коррекция: "заказать защиту от ddos" — легитимная покупка услуги защиты, а не
+-- заказ атаки. Сбрасываем то, что уже могло уйти сюда с прошлых прогонов, и
+-- добавляем исключение на корень 'защит' в само условие ниже.
+UPDATE common.requests SET cluster_id = NULL
+WHERE cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Покупка/Заказ)')
+  AND request ~* '\mзащит\w*';
+
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Покупка/Заказ)')
-WHERE cluster_id IS NULL AND request ~* '(\mкупить\w*|\mсколько стоит\w*|\mзаказ\w*|\mзаказать\w*)';
+WHERE cluster_id IS NULL AND request ~* '(\mкупить\w*|\mсколько стоит\w*|\mзаказ\w*|\mзаказать\w*)' AND request !~* '\mзащит\w*';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Действие/Намерение)')
 WHERE cluster_id IS NULL AND request ~* '(\mзадудосить\w*|\mдудосить\w*|\mсделать\w*|\mдосить\w*|\mдосят\w*|\mддосят\w*|\mдудосят\w*|\mзадудосили\w*|\mддосер\w*|\mдудосер\w*|\mddoser\w*)';
