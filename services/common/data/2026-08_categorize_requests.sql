@@ -68,6 +68,11 @@
 --      большинства он уже пришёл из исходного файла — их не трогаем): ddos-
 --      упоминание + уточнение продукта (сайт/сеть/хостинг/vds/сервер) -> хаб
 --      этого продукта; ddos-упоминание без уточнения -> хаб "DDoS".
+--   12. [cluster_id: Вредоносные (Цели: IP/Телефон/Сеть)] Новое составное условие:
+--      ddos-упоминание (в т.ч. с "атака") + предлог "на" + конкретная цель
+--      (vpn/втб) -> тот же кластер. Список целей (сейчас только vpn/втб) легко
+--      расширить — просто добавить слово в alternation через "|". Хаб остаётся
+--      "DDoS" по умолчанию (часть 3), т.к. vpn/втб не входят в список продуктов.
 --
 -- Идемпотентно: каждый UPDATE — WHERE cluster_id IS NULL (или topic_id IS NULL),
 -- уже проставленные категории никогда не перезаписываются. Безопасно запускать
@@ -129,6 +134,16 @@ WHERE cluster_id IS NULL AND request ~* '(\mзадудосить\w*|\mдудос
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Цели: IP/Телефон/Сеть)')
 WHERE cluster_id IS NULL AND request ~* '(\mпо айпи\w*|\mпо номеру\w*|\mна номер\w*|\mна телефон\w*|\mмобильный\w*|\mна интернет\w*|\mна провайдеров\w*|\mна домен\w*|\mна яндекс\w*|\mна россию\w*|\mномера\w*|\mwifi\w*|\mайпи\w*|\mdns\w*)';
+
+-- Новое: ddos-упоминание (в т.ч. с явным словом 'атака' — 'ddos атака на vpn')
+-- + предлог 'на' + конкретная цель (vpn/втб и т.п.) -> тот же кластер
+-- 'Вредоносные (Цели: IP/Телефон/Сеть)'. Хаб остаётся 'DDoS' по умолчанию
+-- (часть 3) — vpn/втб не входят в список продуктов (сайт/сеть/хостинг/vds/сервер).
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Цели: IP/Телефон/Сеть)')
+WHERE cluster_id IS NULL
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*)'
+  AND request ~* '\mна\M'
+  AND request ~* '(\mvpn\w*|\mвтб\w*)';
 
 -- Тир 1 — составные условия
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Без защиты (не целевой)')
