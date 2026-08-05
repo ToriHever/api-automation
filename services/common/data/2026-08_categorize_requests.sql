@@ -64,6 +64,10 @@
 --      исключение на корень "защит" + сброс уже неверно проставленного cluster_id
 --      с прошлых прогонов (такие строки провалятся дальше по цепочке и корректно
 --      попадут в tier2-кластер "Защита").
+--   11. [новое: ЧАСТЬ 3, hub_id] Автоприсвоение хаба для строк без hub_id (у
+--      большинства он уже пришёл из исходного файла — их не трогаем): ddos-
+--      упоминание + уточнение продукта (сайт/сеть/хостинг/vds/сервер) -> хаб
+--      этого продукта; ddos-упоминание без уточнения -> хаб "DDoS".
 --
 -- Идемпотентно: каждый UPDATE — WHERE cluster_id IS NULL (или topic_id IS NULL),
 -- уже проставленные категории никогда не перезаписываются. Безопасно запускать
@@ -430,5 +434,35 @@ WHERE topic_id IS NULL AND request ~* '(\mатак\w*|(\mattack\w*|\matack\w*|\m
 
 UPDATE common.requests SET topic_id = (SELECT topic_id FROM common.topics WHERE topic_name = 'другой вид атаки')
 WHERE topic_id IS NULL AND request ~* '(\mатак\w*|(\mattack\w*|\matack\w*|\mataka\w*))';
+
+-- ============================================================
+-- ЧАСТЬ 3: hub_id — упоминание ddos + уточнение продукта
+-- Большинство строк уже получили hub_id из исходного файла (колонка 'Хаб') —
+-- их WHERE hub_id IS NULL не тронет. Это правило — только для строк без хаба:
+--   1. Есть упоминание ddos (в любом написании) + уточнение продукта
+--      (сайт/сеть/хостинг/vds/сервер) -> хаб соответствующего продукта.
+--   2. Есть упоминание ddos, но продукт не уточнён -> хаб 'DDoS'.
+-- ============================================================
+
+-- Приоритет 1: ddos + конкретный продукт -> хаб продукта.
+
+UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Сайт')
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)' AND request ~* '(\mсайт\w*|\msite\w*)';
+
+UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Сети')
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)' AND request ~* '\mсет\w*';
+
+UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Хостинг')
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)' AND request ~* '\mхостинг\w*';
+
+UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'VDS')
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)' AND request ~* '\mvds\w*';
+
+UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'DS / Дедик / Выделенный')
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)' AND request ~* '(\mсервер\w*|\mserver\w*)';
+
+-- Приоритет 2: ddos без уточнения продукта -> хаб 'DDoS'.
+UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'DDoS')
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)';
 
 COMMIT;
