@@ -73,6 +73,23 @@
 --      (vpn/втб) -> тот же кластер. Список целей (сейчас только vpn/втб) легко
 --      расширить — просто добавить слово в alternation через "|". Хаб остаётся
 --      "DDoS" по умолчанию (часть 3), т.к. vpn/втб не входят в список продуктов.
+--   13. [разбор реальных примеров] Список правок:
+--      - hub_id: правило L3/L4 было слишком узким ('l3 l7' без L4 уходило в
+--        Сайт вместо Сети) — заменено на любое упоминание L3 в любом виде.
+--      - cluster 'Вредоносные (Цели: ...)': список целей расширен
+--        (инфраструктура/компания/компьютер/ркн/ростелеком/человек).
+--      - cluster 'Новости': добавлены год (2020-2049) и месяцы, только вместе
+--        с ddos-упоминанием (сами по себе слишком общие).
+--      - cluster 'Правовые/Юридические': добавлено 'ответственность'.
+--      - cluster 'Как работает': добавлено 'реализуют/реализовать'.
+--      - cluster 'Отличие': стем расширен до 'отлича\w*' — 'отличается' не
+--        покрывал 'отличаются' (разные окончания, не префикс друг друга).
+--      - cluster 'Справка / Терминология': добавлено 'является'.
+--      - cluster 'Цели': у него вообще не было правила (баг переноса из VBA,
+--        ключевое слово 'цели' потерялось) — добавлено, стем 'цел\w*' ловит
+--        и 'цель' в ед. числе, чего не было даже в оригинальном VBA.
+--      - cluster 'Признаки' — новый, отсутствовал в исходном списке из 39
+--        кластеров, добавлен в справочник вручную (см. INSERT в начале части 1).
 --
 -- Идемпотентно: каждый UPDATE — WHERE cluster_id IS NULL (или topic_id IS NULL),
 -- уже проставленные категории никогда не перезаписываются. Безопасно запускать
@@ -83,6 +100,20 @@ BEGIN;
 -- ============================================================
 -- ЧАСТЬ 1: cluster_id (столбец 'Кластер' в исходном файле)
 -- ============================================================
+
+-- Новый кластер 'Признаки' (симптомы/признаки ddos-атаки) — отсутствовал в
+-- исходном списке из 39 кластеров. cluster_id проставляем вручную, как и в
+-- миграции импорта — у таблицы нет sequence/DEFAULT на этой колонке.
+WITH cluster_base AS (
+    SELECT COALESCE(MAX(cluster_id), 0) AS base_id FROM common.clusters
+),
+new_cluster_names AS (
+    SELECT v.name FROM (VALUES ('Признаки')) AS v(name)
+    WHERE NOT EXISTS (SELECT 1 FROM common.clusters c WHERE c.cluster_name = v.name)
+)
+INSERT INTO common.clusters (cluster_id, cluster_name)
+SELECT (SELECT base_id FROM cluster_base) + ROW_NUMBER() OVER (), name
+FROM new_cluster_names;
 
 -- Тир 0 — исключения
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Не целевые')
@@ -96,10 +127,10 @@ UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters 
 WHERE cluster_id IS NULL AND request ~* '(\mмайнкрафт\M|\mminecraft\M|\mвинди\M)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Правовые/Юридические')
-WHERE cluster_id IS NULL AND request ~* '(\mстатья\M|\mсправедливость\M|\mзакон\M)';
+WHERE cluster_id IS NULL AND request ~* '(\mстатья\M|\mсправедливость\M|\mзакон\M|\mответственност\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Справка / Терминология')
-WHERE cluster_id IS NULL AND request ~* '(\mрасшифровка\M|\mотказ в обслуживании\M|\mперевод\M|\mопределение\M|\mтермин\M|\mкто такой\M|\mкто такие\M|\mdistributed denial\M|\mкартинка\M|\mфото\M)';
+WHERE cluster_id IS NULL AND request ~* '(\mрасшифровка\M|\mотказ в обслуживании\M|\mперевод\M|\mопределение\M|\mтермин\M|\mкто такой\M|\mкто такие\M|\mdistributed denial\M|\mкартинка\M|\mфото\M|\mявля\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Радар')
 WHERE cluster_id IS NULL AND request ~* '\mкарта\M';
@@ -143,7 +174,7 @@ UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters 
 WHERE cluster_id IS NULL
   AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*)'
   AND request ~* '\mна\M'
-  AND request ~* '(\mvpn\w*|\mвтб\w*)';
+  AND request ~* '(\mvpn\w*|\mвтб\w*|\mинфраструктур\w*|\mкомпани\w*|\mкомпьютер\w*|\mркн\M|\mростелеком\w*|\mчеловек\w*)';
 
 -- Тир 1 — составные условия
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Без защиты (не целевой)')
@@ -160,13 +191,21 @@ UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters 
 WHERE cluster_id IS NULL AND request ~* '(\mfree\w*|\mдешевая\w*|\mбесплатно\w*|\mбесплатная\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Отличие')
-WHERE cluster_id IS NULL AND request ~* '(\mразница\w*|\mотличие\w*|\mотличия\w*|\mотличается\w*|\mразличия\w*|\mvs\w*|\mчем отличается\w*|\mдос ддос\w*|\mдос и ддос\w*|\mddos и dos\w*|\mdos и ddos\w*|\mdos от ddos\w*)';
+WHERE cluster_id IS NULL AND request ~* '(\mразница\w*|\mотличие\w*|\mотличия\w*|\mотлича\w*|\mразличия\w*|\mvs\w*|\mчем отличается\w*|\mдос ддос\w*|\mдос и ддос\w*|\mddos и dos\w*|\mdos и ddos\w*|\mdos от ddos\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Виды')
 WHERE cluster_id IS NULL AND request ~* '(\mтипы\w*|\mтипом\w*|\mвиды\w*|\mклассификация\w*|\mуровни\w*|\mпример\w*|\mмеры\w*|\mметоды\w*|\mметодики\w*|\mметодика\w*|\mкакие бывают\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Новости')
 WHERE cluster_id IS NULL AND request ~* '(\mчисло\w*|\mхакерские атаки\w*|\mхакерские\w*|\mхакеры\w*|\mсегодня\w*|\mновости\w*|\mкрупнейшие\w*|\mподвергся\w*|\mсейчас\w*|\mhacker\w*)';
+
+-- Новое: ddos-упоминание + год (2020-2029) или месяц -> тоже 'Новости'
+-- ('ddos атака 2025', 'ddos атаки июнь'). Год/месяц сами по себе слишком общие,
+-- поэтому требуем ddos-упоминание рядом.
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Новости')
+WHERE cluster_id IS NULL
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*)'
+  AND request ~* '(\m20[2-4][0-9]\M|\mянвар\w*|\mфевраля\M|\mфевраль\M|\mмарта\M|\mмарт\M|\mапреля\M|\mапрель\M|\mмая\M|\mмай\M|\mиюня\M|\mиюнь\M|\mиюля\M|\mиюль\M|\mавгуста\M|\mавгуст\M|\mсентябр\w*|\mоктябр\w*|\mноябр\w*|\mдекабр\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Последствия')
 WHERE cluster_id IS NULL AND request ~* '(\mпоследствия\w*|\mчем опасны\w*|\mчем опасна\w*|\mриски\w*|\mриск\w*|\mмешает\w*|\mдоступу\w*)';
@@ -184,13 +223,23 @@ UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters 
 WHERE cluster_id IS NULL AND request ~* '(\mбезопасность\w*|\mбезопасности\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Защита')
-WHERE cluster_id IS NULL AND request ~* '(\mборьба\w*|\mблокировка\w*|\mзащищенные\w*|\mзащитой\w*|\mзащиту\w*|\mизбежать\w*|\mзащиты\w*|\mзащите\w*|\mзащищенный\w*|\manti ddos\w*|\mантиддос\w*|\mantiddos\w*|\mанти ddos\w*|\mанти дудос\w*|\mанти ддос\w*|\mпредотвратить\w*|\mбороться\w*|\mостановить\w*|\mустранить\w*|\mзащитить\w*|\mзащита\w*|\mотразить\w*|\mкак бороться\w*|\mпротивостоять\w*|\mantibot\w*|\mантибот\w*|\mprotection\w*|\mprotect\w*|\mservice\w*|\mантидос\w*)';
+WHERE cluster_id IS NULL AND request ~* '(\mборьба\w*|\mблокировка\w*|\mзащищенные\w*|\mзащитой\w*|\mзащиту\w*|\mизбежать\w*|\mзащиты\w*|\mзащите\w*|\mзащищенный\w*|\manti ddos\w*|\mантиддос\w*|\mantiddos\w*|\mанти ddos\w*|\mанти дудос\w*|\mанти ддос\w*|\mпредотвратить\w*|\mбороться\w*|\mостановить\w*|\mустранить\w*|\mзащитить\w*|\mзащита\w*|\mотразить\w*|\mкак бороться\w*|\mпротивостоять\w*|\mпротиводействи\w*|\mantibot\w*|\mантибот\w*|\mprotection\w*|\mprotect\w*|\mservice\w*|\mантидос\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Как работает')
-WHERE cluster_id IS NULL AND request ~* '(\mпринципы\w*|\mкак работает\w*|\mкак происходит\w*)';
+WHERE cluster_id IS NULL AND request ~* '(\mпринципы\w*|\mкак работает\w*|\mкак происходит\w*|\mреализ\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Причины')
 WHERE cluster_id IS NULL AND request ~* '(\mпричины\w*|\mпочему\w*|\mзачем\w*|\mдля чего\w*)';
+
+-- 'Цели' — у этого кластера не было ни одного правила (баг переноса из VBA, где
+-- ключевое слово 'цели' присутствовало, но потерялось при портировании). Стем
+-- \mцел\w*\M покрывает цель/цели/целью/целей — VBA-версия ловила только 'цели'
+-- (подстрока), 'преследуют цель' (ед. число) она бы тоже не поймала.
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Цели')
+WHERE cluster_id IS NULL AND request ~* '\mцел\w*\M';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Признаки')
+WHERE cluster_id IS NULL AND request ~* '(\mпризнак\w*|\mсимптом\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Какие')
 WHERE cluster_id IS NULL AND request ~* '(\mкакие\w*|\mкакой\w*)';
@@ -462,10 +511,11 @@ WHERE topic_id IS NULL AND request ~* '(\mатак\w*|(\mattack\w*|\matack\w*|\m
 --   2. Есть упоминание ddos, но продукт не уточнён -> хаб 'DDoS'.
 -- ============================================================
 
--- Приоритет 0: L3/L4 -> 'Сети' (проверяется первым, побеждает даже при наличии L7);
--- просто L7 без L3/L4 -> 'Сайт'.
+-- Приоритет 0: любое упоминание L3 (l3, l3-4, l3/l4, l3 l7, ...) -> 'Сети', побеждает
+-- даже при наличии L7 в том же запросе ('l3 l7' -> Сети, не Сайт). Только L7 без
+-- L3 в любом виде -> 'Сайт'.
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Сети')
-WHERE hub_id IS NULL AND request ~* '\ml3[\s\-/]*l?4\M';
+WHERE hub_id IS NULL AND request ~* '\ml3\w*\M';
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Сайт')
 WHERE hub_id IS NULL AND request ~* '\ml7\M';
