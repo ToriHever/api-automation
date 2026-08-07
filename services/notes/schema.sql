@@ -14,8 +14,15 @@ CREATE TABLE IF NOT EXISTS common.notes_categories (
 COMMENT ON TABLE common.notes_categories IS 'Фиксированный справочник категорий заметок (показывается кнопками в Telegram-боте при создании заметки).';
 
 INSERT INTO common.notes_categories (category_name, icon) VALUES
+    ('Сайт', NULL),
+    ('Рассылки', NULL),
+    ('Реклама', NULL),
+    ('ЯБизнес', NULL),
+    ('GMaps', NULL),
     ('Google', '🔍'),
-    ('Яндекс', '🟡')
+    ('Яндекс', '🟡'),
+    ('Блог', NULL),
+    ('Продуктовые', NULL)
 ON CONFLICT (category_name) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS common.notes (
