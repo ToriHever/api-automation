@@ -22,7 +22,8 @@ INSERT INTO common.notes_categories (category_name, icon) VALUES
     ('Google', '🔍'),
     ('Яндекс', '🟡'),
     ('Блог', NULL),
-    ('Продуктовые', NULL)
+    ('Продуктовые', NULL),
+    ('Мир', NULL)
 ON CONFLICT (category_name) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS common.notes (
