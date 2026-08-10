@@ -1,7 +1,10 @@
 // scripts/lemmatize-requests.js
 // Разбивает common.requests на слова и проставляет им леммы через
 // services/lemmatizer/app.py (pymorphy3), заполняя
-// common.request_words / common.requests_words.
+// common.request_words / common.requests_words, а затем группирует запросы
+// с одинаковым набором лемм в common.request_groups (см. common.requests.group_id):
+// 'защита сервера от атак' / 'защита серверов от атак' / 'защиты серверов от атак'
+// попадают в одну группу, т.к. дают одинаковый набор лемм.
 //
 // Запуск: node scripts/lemmatize-requests.js
 // Требует запущенный лемматизатор: python services/lemmatizer/app.py
@@ -116,6 +119,55 @@ async function main() {
             linked++;
         }
         logger.info(`Готово. Связано запросов: ${linked}`);
+
+        // 5. Группировка: запросы с одинаковым набором лемм (разные словоформы
+        // одного смысла: 'защита сервера от атак' / 'защиты серверов от атак')
+        // получают общий group_id. Работает по всем запросам без group_id
+        // (не только только что обработанным), поэтому безопасно перезапускать
+        // и после ручных правок в БД.
+        const { rowCount: newlyGrouped } = await db.query(`
+            WITH ungrouped AS (
+                SELECT r.request_id, r.request,
+                       string_agg(DISTINCT rw.lemma, ' ' ORDER BY rw.lemma) AS lemma_signature
+                FROM common.requests r
+                JOIN common.requests_words rwds ON rwds.request_id = r.request_id
+                JOIN common.request_words rw ON rw.word_id = rwds.word_id
+                WHERE r.group_id IS NULL
+                GROUP BY r.request_id, r.request
+            ),
+            signature_candidates AS (
+                SELECT DISTINCT ON (lemma_signature) lemma_signature, request AS candidate_request
+                FROM ungrouped
+                ORDER BY lemma_signature, length(request) ASC, request ASC
+            ),
+            new_groups AS (
+                INSERT INTO common.request_groups (lemma_signature, canonical_request)
+                SELECT lemma_signature, candidate_request FROM signature_candidates
+                ON CONFLICT (lemma_signature) DO NOTHING
+            )
+            UPDATE common.requests r
+            SET group_id = g.group_id
+            FROM ungrouped u
+            JOIN common.request_groups g ON g.lemma_signature = u.lemma_signature
+            WHERE r.request_id = u.request_id
+        `);
+        logger.info(`Раскидано по группам запросов: ${newlyGrouped}`);
+
+        // 6. Название группы (canonical_request) — всегда самый короткий запрос
+        // в группе; пересчитываем на случай, если в группу добавился более
+        // короткий вариант, чем был раньше.
+        await db.query(`
+            UPDATE common.request_groups g
+            SET canonical_request = shortest.request
+            FROM (
+                SELECT DISTINCT ON (r.group_id) r.group_id, r.request
+                FROM common.requests r
+                WHERE r.group_id IS NOT NULL
+                ORDER BY r.group_id, length(r.request) ASC, r.request ASC
+            ) shortest
+            WHERE shortest.group_id = g.group_id
+              AND shortest.request <> g.canonical_request
+        `);
     } finally {
         await db.disconnect();
     }
