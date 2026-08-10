@@ -385,7 +385,7 @@ agg AS (
         COUNT(DISTINCT request)          AS requests_count,
         SUM(clicks)                      AS clicks_sum,
         SUM(impressions)                 AS impressions_sum,
-        ROUND(SUM(clicks)::numeric * 100.0 / NULLIF(SUM(impressions), 0), 4) AS ctr_avg,
+        ROUND(SUM(clicks)::numeric * 100.0 / NULLIF(SUM(impressions), 0), 1) AS ctr_avg,
         ROUND(AVG(position)::numeric, 0) AS position_avg
     FROM buckets
     GROUP BY project_name, cluster_topvisor_name, bucket, mode, period
@@ -422,7 +422,7 @@ SELECT
     p.impressions_current, p.impressions_prev,
     ROUND((p.impressions_current - p.impressions_prev) * 100.0 / NULLIF(p.impressions_prev, 0), 0) AS dyn_impressions_pct,
     p.ctr_current, p.ctr_prev,
-    ROUND((p.ctr_current - p.ctr_prev) * 100.0 / NULLIF(p.ctr_prev, 0), 4) AS dyn_ctr_pct,
+    ROUND((p.ctr_current - p.ctr_prev) * 100.0 / NULLIF(p.ctr_prev, 0), 0) AS dyn_ctr_pct,
     p.position_current, p.position_prev,
     ROUND((p.position_prev - p.position_current) * 100.0 / NULLIF(p.position_prev, 0), 0) AS dyn_position_pct,
     ROUND(p.requests_current * 100.0 / NULLIF(t.total_requests_current, 0), 0) AS pct_of_total
