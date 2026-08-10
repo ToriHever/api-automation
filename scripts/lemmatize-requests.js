@@ -125,7 +125,12 @@ async function main() {
         // получают общий group_id. Работает по всем запросам без group_id
         // (не только только что обработанным), поэтому безопасно перезапускать
         // и после ручных правок в БД.
-        const { rowCount: newlyGrouped } = await db.query(`
+        // 5a. Считаем "подпись" (набор лемм) для всех ещё не сгруппированных
+        // запросов и создаём для новых подписей строки в common.request_groups.
+        // Отдельным запросом — иначе только что вставленные внутри WITH строки
+        // не видны JOIN'у на реальную таблицу в том же statement (особенность
+        // Postgres: CTE-INSERT невидим для остальных частей того же запроса).
+        await db.query(`
             WITH ungrouped AS (
                 SELECT r.request_id, r.request,
                        string_agg(DISTINCT rw.lemma, ' ' ORDER BY rw.lemma) AS lemma_signature
@@ -139,11 +144,22 @@ async function main() {
                 SELECT DISTINCT ON (lemma_signature) lemma_signature, request AS candidate_request
                 FROM ungrouped
                 ORDER BY lemma_signature, length(request) ASC, request ASC
-            ),
-            new_groups AS (
-                INSERT INTO common.request_groups (lemma_signature, canonical_request)
-                SELECT lemma_signature, candidate_request FROM signature_candidates
-                ON CONFLICT (lemma_signature) DO NOTHING
+            )
+            INSERT INTO common.request_groups (lemma_signature, canonical_request)
+            SELECT lemma_signature, candidate_request FROM signature_candidates
+            ON CONFLICT (lemma_signature) DO NOTHING
+        `);
+
+        // 5b. Теперь все нужные группы уже существуют в таблице — привязываем group_id.
+        const { rowCount: newlyGrouped } = await db.query(`
+            WITH ungrouped AS (
+                SELECT r.request_id,
+                       string_agg(DISTINCT rw.lemma, ' ' ORDER BY rw.lemma) AS lemma_signature
+                FROM common.requests r
+                JOIN common.requests_words rwds ON rwds.request_id = r.request_id
+                JOIN common.request_words rw ON rw.word_id = rwds.word_id
+                WHERE r.group_id IS NULL
+                GROUP BY r.request_id
             )
             UPDATE common.requests r
             SET group_id = g.group_id
