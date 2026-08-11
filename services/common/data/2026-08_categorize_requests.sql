@@ -135,6 +135,16 @@
 --      cluster_id/topic_id для строк с новыми словами, которые могли осесть
 --      в других категориях до этого фикса (кроме уже верно определённых как
 --      'Защита'/'защита').
+--   20. [L3/L4/L7/OSI] Запросы вида 'ddos l4', 'l3 ddos', 'layer 4 ddos' не
+--      определялись вообще: hub_id — правило ловило только L3, не L4 ('l4
+--      интернет' без hub_id); cluster_id — 'Заказ атаки?' не знала про
+--      L3/L4/L7/layer как про уточнение цели. Плюс запросы БЕЗ ddos, только
+--      про сами уровни модели ('l3 l4 l7', 'l4 интернет') — раньше никуда не
+--      попадали. Теперь: hub_id — L3 ИЛИ L4 (не только L3) -> 'Сети', L7/
+--      'layer 7' без L3/L4 -> 'Сайт'. cluster_id — L3/L4/L7/layer N + ddos-
+--      упоминание, без 'защит' -> 'Заказ атаки?' (расширен список целей).
+--      L3/L4/L7/layer N/'osi' БЕЗ ddos-упоминания -> новый кластер 'OSI'
+--      (добавлен в справочник, как ранее 'Признаки').
 --
 
 -- Идемпотентно: каждый UPDATE — WHERE cluster_id IS NULL (или topic_id IS NULL),
@@ -154,7 +164,7 @@ WITH cluster_base AS (
     SELECT COALESCE(MAX(cluster_id), 0) AS base_id FROM common.clusters
 ),
 new_cluster_names AS (
-    SELECT v.name FROM (VALUES ('Признаки')) AS v(name)
+    SELECT v.name FROM (VALUES ('Признаки'), ('OSI')) AS v(name)
     WHERE NOT EXISTS (SELECT 1 FROM common.clusters c WHERE c.cluster_name = v.name)
 )
 INSERT INTO common.clusters (cluster_id, cluster_name)
@@ -205,6 +215,15 @@ WHERE cluster_id IS NULL AND request ~* '(\mфлуд\w*|\mamplification\w*|\micm
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Софт/Скрипты)')
 WHERE cluster_id IS NULL AND request ~* '(\mпрограмм\w*|\mскачать\w*|\mpython\w*|\mпитон\w*|\mскрипт\w*|\mтермукс\w*|\mtermux\w*|\mбот\w*|\mприложение\w*|\mapk\w*|\mcmd\w*|\mtools\w*|\mclient\w*|\mпанель\w*|\mprogram\w*|\mтроян\w*|\mонлайн\w*|\monline\w*)';
+
+-- Новое: 'OSI' — чисто технический вопрос про уровни сетевой модели (L3/L4/L7/
+-- layer N/osi), БЕЗ упоминания ddos рядом ('l3 l4 l7', 'l4 интернет'). Если
+-- ddos упомянут — это не вопрос про OSI, а потенциальный заказ атаки (см. ниже,
+-- правило 'Заказ атаки?' в Тир 1 составных условиях).
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'OSI')
+WHERE cluster_id IS NULL
+  AND request ~* '(\ml3\w*\M|\ml4\w*\M|\ml7\M|\mlayer\s*3\w*|\mlayer\s*4\w*|\mlayer\s*7\w*|\mosi\M)'
+  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*)';
 
 -- Коррекция под новое правило ниже: сбрасываем то, что уже могло уйти в
 -- 'Цены'/'Вредоносные (Покупка/Заказ)'/'Готовое решение' с прошлых прогонов,
@@ -348,8 +367,11 @@ WHERE cluster_id IS NULL AND request ~* '(\mчто\M|\mэто\M)';
 
 -- 'Заказ атаки?' — оценивается после всех именованных категорий: если дошли сюда,
 -- значит ничего более специфичное не подошло (см. пояснение выше).
+-- Список целей расширен L3/L4/L7/layer N ('ddos l4', 'l3 ddos', 'layer 4 ddos') —
+-- упоминание уровня сети + ddos без слова о защите тоже похоже на заказ атаки
+-- (в отличие от 'OSI' выше, где ddos-упоминания нет вообще).
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Заказ атаки?')
-WHERE cluster_id IS NULL AND request ~* '(\mcdn\w*|\mроутер\w*|\mip\w*|\mадрес\w*|\mnginx\w*|\mvds\w*|\mvps\w*|\mсервер\w*|\mсайт\w*|\mхост\w*|\mпровайдеров\w*|\mботнет\w*|\msite\w*|\mserver\w*|\mzone\w*|\mтг\w*|\mинтернета\w*)' AND request !~* '(\mзащит\w*|\mзащищ[её]\w*|\mбезопасн\w*|\mзахист\w*)' AND (request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*)');
+WHERE cluster_id IS NULL AND request ~* '(\mcdn\w*|\mроутер\w*|\mip\w*|\mадрес\w*|\mnginx\w*|\mvds\w*|\mvps\w*|\mсервер\w*|\mсайт\w*|\mхост\w*|\mпровайдеров\w*|\mботнет\w*|\msite\w*|\mserver\w*|\mzone\w*|\mтг\w*|\mинтернета\w*|\ml3\w*\M|\ml4\w*\M|\ml7\M|\mlayer\s*3\w*|\mlayer\s*4\w*|\mlayer\s*7\w*)' AND request !~* '(\mзащит\w*|\mзащищ[её]\w*|\mбезопасн\w*|\mзахист\w*)' AND (request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*)');
 
 -- Фолбэк: запрос целиком состоит из ddos/атака-слов (и пробелов) -> 'Общее понятие DDoS'
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Общее понятие DDoS')
@@ -617,25 +639,28 @@ WHERE topic_id IS NULL AND request ~* '(\mатак\w*|(\mattack\w*|\matack\w*|\m
 --   2. Есть упоминание ddos, но продукт не уточнён -> хаб 'DDoS'.
 -- ============================================================
 
--- Коррекция: строки с упоминанием L3/L7 могли уже получить hub_id из исходного
--- файла (например, общий 'DDoS'), не совпадающий с этим уточняющим правилом.
--- Сбрасываем именно такие строки, чтобы приоритет 0 ниже мог их переопределить.
+-- Коррекция: строки с упоминанием L3/L4/L7 могли уже получить hub_id из
+-- исходного файла (например, общий 'DDoS'), не совпадающий с этим уточняющим
+-- правилом. Сбрасываем именно такие строки, чтобы приоритет 0 ниже мог их
+-- переопределить. [добавлено] L4/'layer 4' раньше не учитывались наравне с
+-- L3 — 'ddos l4'/'l4 интернет'/'layer 4 ddos' оставались без хаба вообще.
 UPDATE common.requests SET hub_id = NULL
-WHERE request ~* '\ml3\w*\M'
+WHERE request ~* '(\ml3\w*\M|\ml4\w*\M|\mlayer\s*3\w*|\mlayer\s*4\w*)'
   AND hub_id IS DISTINCT FROM (SELECT hub_id FROM common.hubs WHERE hub_name = 'Сети');
 
 UPDATE common.requests SET hub_id = NULL
-WHERE request ~* '\ml7\M' AND request !~* '\ml3\w*\M'
+WHERE request ~* '(\ml7\M|\mlayer\s*7\w*)' AND request !~* '(\ml3\w*\M|\ml4\w*\M|\mlayer\s*3\w*|\mlayer\s*4\w*)'
   AND hub_id IS DISTINCT FROM (SELECT hub_id FROM common.hubs WHERE hub_name = 'Сайт');
 
--- Приоритет 0: любое упоминание L3 (l3, l3-4, l3/l4, l3 l7, ...) -> 'Сети', побеждает
--- даже при наличии L7 в том же запросе ('l3 l7' -> Сети, не Сайт). Только L7 без
--- L3 в любом виде -> 'Сайт'.
+-- Приоритет 0: любое упоминание L3 ИЛИ L4 (l3, l4, l3-4, l3/l4, layer 3,
+-- layer 4, l3 l7, ...) -> 'Сети', побеждает даже при наличии L7 в том же
+-- запросе ('l3 l7' -> Сети, не Сайт). Только L7 (или 'layer 7') без L3/L4
+-- в любом виде -> 'Сайт'.
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Сети')
-WHERE hub_id IS NULL AND request ~* '\ml3\w*\M';
+WHERE hub_id IS NULL AND request ~* '(\ml3\w*\M|\ml4\w*\M|\mlayer\s*3\w*|\mlayer\s*4\w*)';
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Сайт')
-WHERE hub_id IS NULL AND request ~* '\ml7\M';
+WHERE hub_id IS NULL AND request ~* '(\ml7\M|\mlayer\s*7\w*)';
 
 -- Приоритет 1: ddos + конкретный продукт -> хаб продукта.
 
