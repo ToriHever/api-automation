@@ -19,6 +19,7 @@
     "collect:checkhost": "node scripts/run-service.js checkhost",
     "notes-bot": "node scripts/notes-bot.js",
     "lemmatize": "node scripts/lemmatize-requests.js",
+    "lemmatize:gsc-queries": "node scripts/lemmatize-gsc-queries.js",
     "gsc:queries-by-url-blog": "node scripts/gsc-queries-by-url-blog.js",
     "test": "node tests/test-connections.js",
     "test:connections": "node tests/test-connections.js",
