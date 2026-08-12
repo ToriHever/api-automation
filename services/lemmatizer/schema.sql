@@ -76,3 +76,21 @@ JOIN common.requests r ON r.group_id = rg.group_id
 GROUP BY rg.group_id, rg.canonical_request, rg.lemma_signature;
 
 COMMENT ON VIEW common.v_request_groups IS 'Группы запросов с полным списком словоформ, входящих в группу — для DataLens.';
+
+-- Та же группировка по леммам, но для запросов из GSC (gsc.top_queries_by_page.query) —
+-- переиспользует common.request_words/common.request_groups: если запрос уже
+-- встречался в common.requests, попадёт в ту же группу. Заполняется
+-- scripts/lemmatize-gsc-queries.js. У таблицы нет serial id (PK — url+period+query),
+-- поэтому group_id проставляется по совпадению текста query, а не по id строки.
+-- Обёрнуто в DO-блок с проверкой to_regclass — этот schema.sql применяется и
+-- scripts/lemmatize-requests.js, где gsc.top_queries_by_page может ещё не
+-- существовать (её создаёт отдельный gsc-сборщик), иначе ALTER упал бы с
+-- ошибкой "relation does not exist".
+DO $$
+BEGIN
+    IF to_regclass('gsc.top_queries_by_page') IS NOT NULL THEN
+        ALTER TABLE gsc.top_queries_by_page ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES common.request_groups(group_id);
+        CREATE INDEX IF NOT EXISTS idx_top_queries_group ON gsc.top_queries_by_page(group_id);
+        COMMENT ON COLUMN gsc.top_queries_by_page.group_id IS 'Группа запроса (common.request_groups) по совпадению набора лемм — проставляется scripts/lemmatize-gsc-queries.js.';
+    END IF;
+END $$;
