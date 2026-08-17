@@ -99,6 +99,9 @@ async function main() {
                 console.log('Недостаточно данных CrUX для этого URL (страница вне выборки).');
             } else {
                 console.error('Ошибка запроса:', err.response?.data || err.message);
+                if (err.response?.data) {
+                    console.error(JSON.stringify(err.response.data, null, 2));
+                }
             }
         }
     }
