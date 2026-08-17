@@ -1,6 +1,6 @@
 // scripts/crux-history-lcp-cls-inp.js
 // Разовый скрипт для тикета: тянет из Chrome UX Report (CrUX) History API
-// динамику LCP/CLS/INP по датам для конкретных URL.
+// динамику LCP/CLS/INP/FCP/TTFB по датам для конкретных URL.
 //
 // Важно: это НЕ Google Search Console API — отчёт "Основные интернет-показатели"
 // в GSC сам построен на данных CrUX, но отдаёт только текущий агрегат и группы
@@ -28,11 +28,19 @@ const path = require('path');
 const API_URL = 'https://chromeuxreport.googleapis.com/v1/records:queryHistoryRecord';
 const API_KEY = process.env.CRUX_API_KEY;
 
-const METRICS = ['largest_contentful_paint', 'cumulative_layout_shift', 'interaction_to_next_paint'];
+const METRICS = [
+    'largest_contentful_paint',
+    'cumulative_layout_shift',
+    'interaction_to_next_paint',
+    'first_contentful_paint',
+    'experimental_time_to_first_byte'
+];
 const METRIC_LABELS = {
     largest_contentful_paint: 'LCP',
     cumulative_layout_shift: 'CLS',
-    interaction_to_next_paint: 'INP'
+    interaction_to_next_paint: 'INP',
+    first_contentful_paint: 'FCP',
+    experimental_time_to_first_byte: 'TTFB'
 };
 
 function formatCollectionDate(period) {
@@ -79,7 +87,7 @@ async function main() {
         process.exit(1);
     }
 
-    const csvLines = ['url,date,LCP_ms,CLS,INP_ms'];
+    const csvLines = ['url,date,LCP_ms,CLS,INP_ms,FCP_ms,TTFB_ms'];
 
     for (const url of urls) {
         console.log(`\n=== ${url} ===`);
@@ -87,12 +95,12 @@ async function main() {
             const data = await fetchHistory(url);
             const rows = parseRecord(data);
 
-            console.log('date       | LCP (ms) | CLS   | INP (ms)');
+            console.log('date       | LCP (ms) | CLS   | INP (ms) | FCP (ms) | TTFB (ms)');
             for (const row of rows) {
                 console.log(
-                    `${row.date} | ${String(row.LCP ?? '-').padStart(8)} | ${String(row.CLS ?? '-').padStart(5)} | ${String(row.INP ?? '-').padStart(8)}`
+                    `${row.date} | ${String(row.LCP ?? '-').padStart(8)} | ${String(row.CLS ?? '-').padStart(5)} | ${String(row.INP ?? '-').padStart(8)} | ${String(row.FCP ?? '-').padStart(8)} | ${String(row.TTFB ?? '-').padStart(9)}`
                 );
-                csvLines.push(`${url},${row.date},${row.LCP ?? ''},${row.CLS ?? ''},${row.INP ?? ''}`);
+                csvLines.push(`${url},${row.date},${row.LCP ?? ''},${row.CLS ?? ''},${row.INP ?? ''},${row.FCP ?? ''},${row.TTFB ?? ''}`);
             }
         } catch (err) {
             if (err.response?.status === 404) {
