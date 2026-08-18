@@ -37,7 +37,7 @@ class GA4Collector extends GoogleBaseCollector {
       return true;
     } catch (error) {
       if (error.response) {
-        this.logger.error(`GA4 API Error: ${error.response.status}`, error.response.data);
+        this.logger.error(`GA4 API Error: ${error.response.status}`, null, { data: error.response.data });
       }
       this.logger.error('Ошибка подключения к GA4 Data API', error);
       throw new Error(`GA4 Data API недоступен: ${error.message}`);
@@ -125,7 +125,7 @@ class GA4Collector extends GoogleBaseCollector {
 
     } catch (error) {
       if (error.response) {
-        this.logger.error(`GA4 API Error: ${error.response.status}`, error.response.data);
+        this.logger.error(`GA4 API Error: ${error.response.status}`, null, { data: error.response.data });
       }
       throw error;
     }
