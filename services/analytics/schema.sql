@@ -641,3 +641,43 @@ FROM daily
 GROUP BY project_name, cluster_topvisor_name, date_trunc('year', event_date::timestamp with time zone);
 
 COMMENT ON VIEW analytics.v_gsc_yearly IS 'Сводка по годам (вся история) для большой таблицы в DataLens. Группировка project_name/cluster_topvisor_name (TopVisor) вместо бывшего product_name (common.products дропнута). ctr сырой (0..1), как из GSC.';
+
+-- ============================================================
+-- v_ga4_web_vitals_daily — Core Web Vitals из GA4 (ga4.web_vitals),
+-- обогащённые project_name/cluster_topvisor_name через TopVisor
+-- (topvisor.dim_keywords/dim_groups — тот же принцип, что и в
+-- v_gsc_requests_daily, НЕ common.clusters_topvisor — та связка
+-- заполнялась вручную и содержала коллизию, см. gsc-datalens-dashboards.md).
+-- Гранулярность: одна строка = день × метрика (LCP/CLS/INP/FCP/TTFB) × страница.
+-- metric_value уже усреднён за день/страницу в GA4Collector — при агрегации
+-- за более длинный период в DataLens используй взвешенное среднее
+-- SUM(metric_value * event_count) / SUM(event_count), а не AVG(metric_value)
+-- (та же логика, что и CTR в v_gsc_requests_kpi).
+-- ============================================================
+
+CREATE OR REPLACE VIEW analytics.v_ga4_web_vitals_daily AS
+WITH url_cluster_map AS (
+    SELECT DISTINCT ON (rtrim(lower(k.target), '/'))
+        rtrim(lower(k.target), '/') AS target_url_norm,
+        g.name AS cluster_topvisor_name,
+        dpe.project_name
+    FROM topvisor.dim_keywords k
+    JOIN topvisor.dim_groups g ON g.id = k.group_id
+    JOIN topvisor.dim_projects tp ON tp.id = k.project_id
+    JOIN common.dim_projects_engines dpe ON dpe.topvisor_project_id = tp.id::text
+    WHERE k.target IS NOT NULL
+    ORDER BY rtrim(lower(k.target), '/'), g.id
+)
+SELECT
+    wv.event_date,
+    wv.metric_name,
+    sm.url,
+    wv.event_count,
+    wv.metric_value,
+    ucm.project_name,
+    ucm.cluster_topvisor_name
+FROM ga4.web_vitals wv
+JOIN common.site_map sm ON sm.id = wv.target_url
+LEFT JOIN url_cluster_map ucm ON ucm.target_url_norm = rtrim(lower(sm.url), '/');
+
+COMMENT ON VIEW analytics.v_ga4_web_vitals_daily IS 'Core Web Vitals из GA4 (ga4.web_vitals), обогащённые project_name/cluster_topvisor_name через TopVisor dim_keywords/dim_groups (тот же принцип, что v_gsc_requests_daily). Гранулярность: день × метрика × страница (url). metric_value — среднее за день/страницу; для периодов длиннее дня используй SUM(metric_value*event_count)/SUM(event_count), не AVG(metric_value).';

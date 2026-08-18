@@ -4,6 +4,9 @@
 это не хранится в БД/репозитории, поэтому легко забыть логику. SQL-вью, на которых всё
 строится, — в [schema.sql](schema.sql).
 
+Несмотря на название файла, в [schema.sql](schema.sql) заодно лежит и `analytics.v_ga4_web_vitals_daily`
+(Core Web Vitals из GA4, не GSC) — см. раздел "QL-чарт: Web Vitals" ниже, отдельный файл заводить не стали.
+
 ## Источник данных
 
 `gsc.search_console` — сырые данные Google Search Console (event_date, request, target_url → id
@@ -86,6 +89,51 @@ EXISTS (SELECT 1 FROM common.brand_keywords bk WHERE sc.request ILIKE '%' || bk.
 `position_filter`/`position_custom_min`/`position_custom_max` (та же логика, что в чарте 2).
 `project_name`/`cluster_topvisor_name`/`mode`/`brand_filter` тут не нужны — чарт по
 определению весь про бренд.
+
+## QL-чарт: Web Vitals (график по метрике + кластерный фильтр)
+
+Источник — `analytics.v_ga4_web_vitals_daily` (не `ga4.web_vitals` напрямую — вью уже
+резолвит `url`/`project_name`/`cluster_topvisor_name` через TopVisor). Одна точка на графике —
+день × метрика; несколько метрик разводятся легендой/цветом по `metric_name`.
+
+Параметры QL: `event_date_from`, `event_date_to` (общие фильтры даты дашборда, как и в GSC-
+чартах), `cluster_topvisor_name` (текст, пусто = без фильтра), `project_name` (текст, пусто =
+без фильтра), `url` (текст, пусто = без фильтра — точное совпадение с `common.site_map.url`,
+т.е. полная ссылка вида `https://ddos-guard.ru/blog/...`, без query/anchor/trailing slash —
+как её хранит `common.site_map`).
+
+```sql
+SELECT
+    v.event_date,
+    v.metric_name,
+    SUM(v.metric_value * v.event_count) / NULLIF(SUM(v.event_count), 0) AS avg_value,
+    SUM(v.event_count) AS events
+FROM analytics.v_ga4_web_vitals_daily v
+WHERE
+    v.event_date >= {{event_date_from}}::date
+    AND v.event_date <= {{event_date_to}}::date
+    AND ({{cluster_topvisor_name}} = '' OR v.cluster_topvisor_name = {{cluster_topvisor_name}})
+    AND ({{project_name}} = '' OR v.project_name = {{project_name}})
+    AND ({{url}} = '' OR v.url = {{url}})
+GROUP BY v.event_date, v.metric_name
+ORDER BY v.event_date
+```
+
+`avg_value` взвешен по `event_count` (`SUM(value*count)/SUM(count)`, не `AVG(value)`) — та же
+причина, что и для CTR в GSC-чартах: без веса дни с 1 визитом и дни с 500 визитами учитывались
+бы одинаково, искажая тренд.
+
+Если нужен фильтр по кластеру именно как **выпадающий список** (Selector), а не свободный
+текст — источник для списка значений: `SELECT DISTINCT cluster_topvisor_name FROM
+analytics.v_ga4_web_vitals_daily WHERE cluster_topvisor_name IS NOT NULL ORDER BY 1` (аналогично
+для `project_name`/`url`).
+
+⚠️ Строки, для которых TopVisor не отслеживает URL (страница вне кластерной структуры), будут
+иметь `cluster_topvisor_name`/`project_name` = `NULL` и не пройдут фильтр по кластеру/проекту
+(это ожидаемо — сравнение `= {{cluster_topvisor_name}}` с `NULL` всегда `NULL`/false). Если
+нужно ещё и "все данные без привязки к кластеру" — добавь отдельную ветку `OR v.cluster_topvisor_name IS NULL`
+под явный параметр (например, `show_uncategorized`), как это сделано с `project_name`/
+`cluster_topvisor_name` через `IS NOT DISTINCT FROM` в `v_gsc_requests_kpi`.
 
 ## Датасет-чарт: KPI-блоки (v_gsc_requests_kpi / v_gsc_requests_kpi_brand)
 

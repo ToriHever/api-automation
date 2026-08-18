@@ -61,7 +61,9 @@ class GA4Collector extends GoogleBaseCollector {
 
       this.logger.info(`Получено строк из GA4 API: ${rows.length}`);
 
-      const records = this.transformData(rows);
+      const urlMapping = await this.normalizeUrls(rows);
+
+      const records = this.transformData(rows, urlMapping);
 
       this.logger.info(`Подготовлено записей для сохранения: ${records.length}`);
 
@@ -132,22 +134,80 @@ class GA4Collector extends GoogleBaseCollector {
   }
 
   /**
+   * Собирает pagePath из строк API в полный URL (домен + путь), нормализует
+   * так же, как GSCCollector (https, без query/anchor/trailing slash)
+   */
+  _normalizeUrl(pagePath) {
+    let url = `${this.config.domain}${pagePath}`;
+
+    url = url.split('?')[0];
+    url = url.split('#')[0];
+    url = url.replace(/^http:\/\//, 'https://');
+    url = url.replace(/\/$/, '');
+
+    return url;
+  }
+
+  /**
+   * Нормализация pagePath -> полный URL через справочник common.site_map
+   * (тот же принцип, что и в GSCCollector.normalizeUrls)
+   */
+  async normalizeUrls(rows) {
+    try {
+      const uniquePaths = [...new Set(rows.map(row => row.dimensionValues[1].value))];
+      const uniqueUrls = [...new Set(uniquePaths.map(path => this._normalizeUrl(path)))];
+
+      this.logger.info(`Найдено уникальных URL после нормализации: ${uniqueUrls.length}`);
+
+      const urlMapping = {};
+
+      for (const url of uniqueUrls) {
+        const result = await this.dbManager.query(
+          `INSERT INTO common.site_map (url)
+           VALUES ($1)
+           ON CONFLICT (url) DO UPDATE SET url = EXCLUDED.url
+           RETURNING id, url`,
+          [url]
+        );
+
+        urlMapping[url] = result.rows[0].id;
+      }
+
+      this.logger.info(`URL нормализованы: ${Object.keys(urlMapping).length} записей`);
+
+      return urlMapping;
+
+    } catch (error) {
+      this.logger.error(`Ошибка нормализации URL: ${error.message}`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Трансформация строк GA4 API (date, pagePath, customEvent:metric_name / eventCount, customEvent:metric_value)
    * в формат для БД
    */
-  transformData(rows) {
+  transformData(rows, urlMapping) {
     const records = [];
 
     for (const row of rows) {
       const [rawDate, pagePath, metricName] = row.dimensionValues.map(v => v.value);
       const [eventCount, metricValueSum] = row.metricValues.map(v => Number(v.value));
 
+      const cleanUrl = this._normalizeUrl(pagePath);
+      const targetUrlId = urlMapping[cleanUrl];
+
+      if (!targetUrlId) {
+        this.logger.warn(`⚠️ URL не найден в mapping: ${pagePath} -> ${cleanUrl}`);
+        continue;
+      }
+
       const eventDate = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`;
 
       records.push({
         event_date: eventDate,
         metric_name: metricName,
-        page_path: pagePath,
+        target_url: targetUrlId,
         event_count: eventCount,
         metric_value: eventCount > 0 ? metricValueSum / eventCount : 0
       });
@@ -163,8 +223,8 @@ class GA4Collector extends GoogleBaseCollector {
     try {
       const result = await this.dbManager.query(
         `SELECT 1 FROM ga4.web_vitals
-         WHERE event_date = $1 AND metric_name = $2 AND page_path = $3`,
-        [record.event_date, record.metric_name, record.page_path]
+         WHERE event_date = $1 AND metric_name = $2 AND target_url = $3`,
+        [record.event_date, record.metric_name, record.target_url]
       );
       return result.rows.length > 0;
     } catch (error) {
@@ -179,12 +239,12 @@ class GA4Collector extends GoogleBaseCollector {
   async insertRecord(record) {
     await this.dbManager.query(
       `INSERT INTO ga4.web_vitals
-       (event_date, metric_name, page_path, event_count, metric_value)
+       (event_date, metric_name, target_url, event_count, metric_value)
        VALUES ($1, $2, $3, $4, $5)`,
       [
         record.event_date,
         record.metric_name,
-        record.page_path,
+        record.target_url,
         record.event_count,
         record.metric_value
       ]
@@ -198,11 +258,11 @@ class GA4Collector extends GoogleBaseCollector {
     await this.dbManager.query(
       `UPDATE ga4.web_vitals
        SET event_count = $4, metric_value = $5, updated_at = CURRENT_TIMESTAMP
-       WHERE event_date = $1 AND metric_name = $2 AND page_path = $3`,
+       WHERE event_date = $1 AND metric_name = $2 AND target_url = $3`,
       [
         record.event_date,
         record.metric_name,
-        record.page_path,
+        record.target_url,
         record.event_count,
         record.metric_value
       ]
@@ -213,7 +273,7 @@ class GA4Collector extends GoogleBaseCollector {
    * Получение ключа записи для логирования
    */
   getRecordKey(record) {
-    return `${record.event_date}|${record.metric_name}|${record.page_path}`;
+    return `${record.event_date}|${record.metric_name}|${record.target_url}`;
   }
 
   /**
@@ -225,7 +285,7 @@ class GA4Collector extends GoogleBaseCollector {
         `SELECT
           COUNT(*) as total_records,
           COUNT(DISTINCT metric_name) as unique_metrics,
-          COUNT(DISTINCT page_path) as unique_pages,
+          COUNT(DISTINCT target_url) as unique_pages,
           SUM(event_count) as total_events,
           MIN(event_date) as first_date,
           MAX(event_date) as last_date
