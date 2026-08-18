@@ -36,6 +36,9 @@ class GA4Collector extends GoogleBaseCollector {
       this.logger.info('GA4 Data API подключение успешно');
       return true;
     } catch (error) {
+      if (error.response) {
+        this.logger.error(`GA4 API Error: ${error.response.status}`, error.response.data);
+      }
       this.logger.error('Ошибка подключения к GA4 Data API', error);
       throw new Error(`GA4 Data API недоступен: ${error.message}`);
     }
@@ -81,43 +84,51 @@ class GA4Collector extends GoogleBaseCollector {
     const allRows = [];
     let offset = 0;
 
-    while (true) {
-      const requestBody = {
-        dateRanges: [{ startDate, endDate }],
-        dimensions,
-        metrics,
-        dimensionFilter: {
-          filter: {
-            fieldName: 'eventName',
-            inListFilter: { values: eventNames }
-          }
-        },
-        limit: pageSize,
-        offset
-      };
+    try {
+      while (true) {
+        const requestBody = {
+          dateRanges: [{ startDate, endDate }],
+          dimensions,
+          metrics,
+          dimensionFilter: {
+            filter: {
+              fieldName: 'eventName',
+              inListFilter: { values: eventNames }
+            }
+          },
+          limit: pageSize,
+          offset
+        };
 
-      this.logger.info(`Запрос к GA4 API (offset=${offset})`);
+        this.logger.info(`Запрос к GA4 API (offset=${offset})`);
 
-      const headers = await this.authManager.getAuthHeaders();
+        const headers = await this.authManager.getAuthHeaders();
 
-      const response = await axios.post(url, requestBody, {
-        headers,
-        timeout: this.config.requestTimeout
-      });
+        const response = await axios.post(url, requestBody, {
+          headers,
+          timeout: this.config.requestTimeout
+        });
 
-      const rows = response.data?.rows || [];
-      this.logger.info(`Ответ получен. Строк: ${rows.length}`);
+        const rows = response.data?.rows || [];
+        this.logger.info(`Ответ получен. Строк: ${rows.length}`);
 
-      allRows.push(...rows);
+        allRows.push(...rows);
 
-      if (rows.length < pageSize) {
-        break;
+        if (rows.length < pageSize) {
+          break;
+        }
+
+        offset += pageSize;
       }
 
-      offset += pageSize;
-    }
+      return allRows;
 
-    return allRows;
+    } catch (error) {
+      if (error.response) {
+        this.logger.error(`GA4 API Error: ${error.response.status}`, error.response.data);
+      }
+      throw error;
+    }
   }
 
   /**
