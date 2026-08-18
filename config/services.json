@@ -29,7 +29,7 @@
     "env_prefix": "CLARITY_"
   },
   "ga4": {
-    "enabled": false,
+    "enabled": true,
     "schedule": "0 11 * * *",
     "priority": 4,
     "timeout": 600000,
