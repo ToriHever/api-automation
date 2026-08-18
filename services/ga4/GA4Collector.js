@@ -132,14 +132,14 @@ class GA4Collector extends GoogleBaseCollector {
   }
 
   /**
-   * Трансформация строк GA4 API (date, eventName, pagePath, customEvent:metric_rating / eventCount, customEvent:metric_value)
+   * Трансформация строк GA4 API (date, pagePath, customEvent:metric_name / eventCount, customEvent:metric_value)
    * в формат для БД
    */
   transformData(rows) {
     const records = [];
 
     for (const row of rows) {
-      const [rawDate, metricName, pagePath, metricRating] = row.dimensionValues.map(v => v.value);
+      const [rawDate, pagePath, metricName] = row.dimensionValues.map(v => v.value);
       const [eventCount, metricValueSum] = row.metricValues.map(v => Number(v.value));
 
       const eventDate = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`;
@@ -148,7 +148,6 @@ class GA4Collector extends GoogleBaseCollector {
         event_date: eventDate,
         metric_name: metricName,
         page_path: pagePath,
-        metric_rating: metricRating || '(not set)',
         event_count: eventCount,
         sum_metric_value: metricValueSum,
         avg_metric_value: eventCount > 0 ? metricValueSum / eventCount : 0
@@ -165,8 +164,8 @@ class GA4Collector extends GoogleBaseCollector {
     try {
       const result = await this.dbManager.query(
         `SELECT 1 FROM ga4.web_vitals
-         WHERE event_date = $1 AND metric_name = $2 AND page_path = $3 AND metric_rating = $4`,
-        [record.event_date, record.metric_name, record.page_path, record.metric_rating]
+         WHERE event_date = $1 AND metric_name = $2 AND page_path = $3`,
+        [record.event_date, record.metric_name, record.page_path]
       );
       return result.rows.length > 0;
     } catch (error) {
@@ -181,13 +180,12 @@ class GA4Collector extends GoogleBaseCollector {
   async insertRecord(record) {
     await this.dbManager.query(
       `INSERT INTO ga4.web_vitals
-       (event_date, metric_name, page_path, metric_rating, event_count, sum_metric_value, avg_metric_value)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+       (event_date, metric_name, page_path, event_count, sum_metric_value, avg_metric_value)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
       [
         record.event_date,
         record.metric_name,
         record.page_path,
-        record.metric_rating,
         record.event_count,
         record.sum_metric_value,
         record.avg_metric_value
@@ -201,13 +199,12 @@ class GA4Collector extends GoogleBaseCollector {
   async updateRecord(record) {
     await this.dbManager.query(
       `UPDATE ga4.web_vitals
-       SET event_count = $5, sum_metric_value = $6, avg_metric_value = $7, updated_at = CURRENT_TIMESTAMP
-       WHERE event_date = $1 AND metric_name = $2 AND page_path = $3 AND metric_rating = $4`,
+       SET event_count = $4, sum_metric_value = $5, avg_metric_value = $6, updated_at = CURRENT_TIMESTAMP
+       WHERE event_date = $1 AND metric_name = $2 AND page_path = $3`,
       [
         record.event_date,
         record.metric_name,
         record.page_path,
-        record.metric_rating,
         record.event_count,
         record.sum_metric_value,
         record.avg_metric_value
@@ -219,7 +216,7 @@ class GA4Collector extends GoogleBaseCollector {
    * Получение ключа записи для логирования
    */
   getRecordKey(record) {
-    return `${record.event_date}|${record.metric_name}|${record.page_path}|${record.metric_rating}`;
+    return `${record.event_date}|${record.metric_name}|${record.page_path}`;
   }
 
   /**

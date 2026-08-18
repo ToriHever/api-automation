@@ -1,12 +1,11 @@
 {
   "apiVersion": "v1beta",
   "webVitals": {
-    "eventNames": ["LCP", "CLS", "INP", "FCP", "TTFB"],
+    "eventNames": ["webVitals"],
     "dimensions": [
       { "name": "date" },
-      { "name": "eventName" },
       { "name": "pagePath" },
-      { "name": "customEvent:metric_rating" }
+      { "name": "customEvent:metric_name" }
     ],
     "metrics": [
       { "name": "eventCount" },
