@@ -8,24 +8,24 @@ CREATE SCHEMA IF NOT EXISTS ga4;
 -- GA4 SCHEMA: Core Web Vitals по кастомным параметрам событий
 -- ============================================
 
+-- Данные приходят одним событием "webVitals" (dataLayer.push из GTM) с
+-- кастомными параметрами: metric_name (LCP/CLS/INP/FCP/TTFB), metric_value.
 CREATE TABLE IF NOT EXISTS ga4.web_vitals (
     event_date DATE NOT NULL,
     metric_name TEXT NOT NULL,
     page_path TEXT NOT NULL,
-    metric_rating TEXT NOT NULL,
     event_count INTEGER DEFAULT 0,
     sum_metric_value DOUBLE PRECISION DEFAULT 0,
     avg_metric_value DOUBLE PRECISION DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    PRIMARY KEY (event_date, metric_name, page_path, metric_rating)
+    PRIMARY KEY (event_date, metric_name, page_path)
 );
 
-COMMENT ON TABLE ga4.web_vitals IS 'Агрегированные Core Web Vitals из GA4 (custom event dimensions/metrics: customEvent:metric_rating, customEvent:metric_value)';
-COMMENT ON COLUMN ga4.web_vitals.metric_name IS 'Имя события/метрики Web Vitals: LCP, CLS, INP, FCP, TTFB';
+COMMENT ON TABLE ga4.web_vitals IS 'Агрегированные Core Web Vitals из GA4, событие webVitals с кастомными параметрами customEvent:metric_name / customEvent:metric_value';
+COMMENT ON COLUMN ga4.web_vitals.metric_name IS 'Тип метрики Web Vitals: LCP, CLS, INP, FCP, TTFB (значение параметра metric_name)';
 COMMENT ON COLUMN ga4.web_vitals.page_path IS 'Путь страницы (pagePath)';
-COMMENT ON COLUMN ga4.web_vitals.metric_rating IS 'Оценка метрики: good / needs-improvement / poor';
 COMMENT ON COLUMN ga4.web_vitals.event_count IS 'Количество событий в группе (eventCount)';
 COMMENT ON COLUMN ga4.web_vitals.sum_metric_value IS 'Сумма значений customEvent:metric_value по группе';
 COMMENT ON COLUMN ga4.web_vitals.avg_metric_value IS 'Среднее значение метрики (sum_metric_value / event_count)';
