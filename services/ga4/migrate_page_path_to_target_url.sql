@@ -54,6 +54,58 @@ BEGIN
     END IF;
 END $$;
 
+-- Шаг 4.5: склейка дублей. Разные варианты page_path (например, с "/" и без
+-- "/" на конце) после нормализации могут схлопнуться в один и тот же
+-- target_url — без этого шага Шаг 5 упадёт на создании уникального PRIMARY
+-- KEY (event_date, metric_name, target_url) с ошибкой "duplicate key".
+DO $$
+DECLARE
+    v_dup_groups INTEGER;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'ga4' AND table_name = 'web_vitals' AND column_name = 'page_path'
+    ) THEN
+        RETURN;
+    END IF;
+
+    SELECT COUNT(*) INTO v_dup_groups FROM (
+        SELECT event_date, metric_name, target_url
+        FROM ga4.web_vitals
+        GROUP BY event_date, metric_name, target_url
+        HAVING COUNT(*) > 1
+    ) d;
+
+    IF v_dup_groups = 0 THEN
+        RAISE NOTICE 'Дублей (event_date, metric_name, target_url) не найдено — склейка не нужна';
+        RETURN;
+    END IF;
+
+    RAISE NOTICE 'Найдено % групп(ы) с дублями по target_url — склеиваю (сумма event_count, взвешенное metric_value)', v_dup_groups;
+
+    CREATE TEMP TABLE _web_vitals_merged AS
+    SELECT
+        event_date,
+        metric_name,
+        target_url,
+        SUM(event_count) AS event_count,
+        SUM(metric_value * event_count) / NULLIF(SUM(event_count), 0) AS metric_value,
+        MIN(page_path) AS page_path,
+        MIN(created_at) AS created_at
+    FROM ga4.web_vitals
+    GROUP BY event_date, metric_name, target_url;
+
+    DELETE FROM ga4.web_vitals;
+
+    INSERT INTO ga4.web_vitals (event_date, metric_name, target_url, event_count, metric_value, page_path, created_at)
+    SELECT event_date, metric_name, target_url, event_count, metric_value, page_path, created_at
+    FROM _web_vitals_merged;
+
+    DROP TABLE _web_vitals_merged;
+
+    RAISE NOTICE 'Склейка дублей завершена';
+END $$;
+
 -- Шаг 5: финализация схемы — выполняется, только если миграция полностью
 -- прошла (Шаг 4 не показал warning). Если увидели warning выше — НЕ
 -- выполняйте этот блок, а сначала разберитесь, почему остались NULL
