@@ -1,5 +1,6 @@
 {
   "apiVersion": "v1beta",
+  "domain": "https://ddos-guard.ru",
   "webVitals": {
     "eventNames": ["webVitals"],
     "dimensions": [
