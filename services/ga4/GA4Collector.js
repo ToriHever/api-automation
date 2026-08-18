@@ -149,8 +149,7 @@ class GA4Collector extends GoogleBaseCollector {
         metric_name: metricName,
         page_path: pagePath,
         event_count: eventCount,
-        sum_metric_value: metricValueSum,
-        avg_metric_value: eventCount > 0 ? metricValueSum / eventCount : 0
+        metric_value: eventCount > 0 ? metricValueSum / eventCount : 0
       });
     }
 
@@ -180,15 +179,14 @@ class GA4Collector extends GoogleBaseCollector {
   async insertRecord(record) {
     await this.dbManager.query(
       `INSERT INTO ga4.web_vitals
-       (event_date, metric_name, page_path, event_count, sum_metric_value, avg_metric_value)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+       (event_date, metric_name, page_path, event_count, metric_value)
+       VALUES ($1, $2, $3, $4, $5)`,
       [
         record.event_date,
         record.metric_name,
         record.page_path,
         record.event_count,
-        record.sum_metric_value,
-        record.avg_metric_value
+        record.metric_value
       ]
     );
   }
@@ -199,15 +197,14 @@ class GA4Collector extends GoogleBaseCollector {
   async updateRecord(record) {
     await this.dbManager.query(
       `UPDATE ga4.web_vitals
-       SET event_count = $4, sum_metric_value = $5, avg_metric_value = $6, updated_at = CURRENT_TIMESTAMP
+       SET event_count = $4, metric_value = $5, updated_at = CURRENT_TIMESTAMP
        WHERE event_date = $1 AND metric_name = $2 AND page_path = $3`,
       [
         record.event_date,
         record.metric_name,
         record.page_path,
         record.event_count,
-        record.sum_metric_value,
-        record.avg_metric_value
+        record.metric_value
       ]
     );
   }
