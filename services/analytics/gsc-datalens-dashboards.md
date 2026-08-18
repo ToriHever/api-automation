@@ -107,7 +107,11 @@ SELECT
     v.event_date,
     v.metric_name,
     SUM(v.metric_value * v.event_count) / NULLIF(SUM(v.event_count), 0) AS avg_value,
-    SUM(v.event_count) AS events
+    SUM(v.event_count) AS events,
+    analytics.web_vitals_rating(
+        v.metric_name,
+        SUM(v.metric_value * v.event_count) / NULLIF(SUM(v.event_count), 0)
+    ) AS rating
 FROM analytics.v_ga4_web_vitals_daily v
 WHERE
     v.event_date >= {{event_date_from}}::date
@@ -122,6 +126,35 @@ ORDER BY v.event_date
 `avg_value` взвешен по `event_count` (`SUM(value*count)/SUM(count)`, не `AVG(value)`) — та же
 причина, что и для CTR в GSC-чартах: без веса дни с 1 визитом и дни с 500 визитами учитывались
 бы одинаково, искажая тренд.
+
+### Индикатор порогов (green/yellow/red по официальным данным Google)
+
+`rating` считается функцией `analytics.web_vitals_rating(metric_name, value)` — 3 официальных
+уровня Google (`good`/`needs_improvement`/`poor`), пороги захардкожены в самой функции ([schema.sql](schema.sql)):
+
+| Метрика | good (зелёный) | needs_improvement (жёлтый) | poor (красный) |
+|---|---|---|---|
+| LCP  | ≤ 2500 мс | 2500–4000 мс | > 4000 мс |
+| INP  | ≤ 200 мс  | 200–500 мс   | > 500 мс  |
+| CLS  | ≤ 0.1     | 0.1–0.25     | > 0.25    |
+| FCP  | ≤ 1800 мс | 1800–3000 мс | > 3000 мс |
+| TTFB | ≤ 800 мс  | 800–1800 мс  | > 1800 мс |
+
+⚠️ Пороги Google официально рассчитаны на 75-й перцентиль реальных измерений (CrUX), а не на
+среднее — у нас в `ga4.web_vitals` хранится только среднее (`metric_value`), без распределения
+по перцентилям (`metric_id` сознательно не собирается — см. описание `ga4.web_vitals` выше),
+так что `rating` тут приближение "по среднему", не полноценная методология CrUX.
+
+**Важно про гранулярность:** `rating` нужно считать **после** агрегации (`SUM(value*count)/SUM(count)`
+в самом чарте, как в примере выше), а не брать `rating` построчно из `v_ga4_web_vitals_daily` —
+там он посчитан для гранулярности день×страница и не подходит, если чарт агрегирует за более
+длинный период или сразу по нескольким страницам (нельзя усреднить/проголосовать по категориям
+`good`/`poor`, это даст неверный результат).
+
+**В DataLens:** привяжи «Раскраску» (Colors) виджета к полю `rating`, вручную задай палитру —
+`good` → зелёный, `needs_improvement` → жёлтый, `poor` → красный (кастомная палитра значений,
+не автоматическая градиентная). Для KPI-плиток (Indicator) — то же самое через условное
+форматирование по значению `rating`.
 
 Если нужен фильтр по кластеру именно как **выпадающий список** (Selector), а не свободный
 текст — источник для списка значений: `SELECT DISTINCT cluster_topvisor_name FROM

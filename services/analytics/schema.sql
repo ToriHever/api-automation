@@ -643,6 +643,61 @@ GROUP BY project_name, cluster_topvisor_name, date_trunc('year', event_date::tim
 COMMENT ON VIEW analytics.v_gsc_yearly IS 'Сводка по годам (вся история) для большой таблицы в DataLens. Группировка project_name/cluster_topvisor_name (TopVisor) вместо бывшего product_name (common.products дропнута). ctr сырой (0..1), как из GSC.';
 
 -- ============================================================
+-- web_vitals_rating(metric_name, value) — единая функция с официальными
+-- порогами Google для Core Web Vitals (https://web.dev/articles/vitals#core-web-vitals-thresholds,
+-- FCP/TTFB — https://web.dev/articles/fcp / ttfb). 3 уровня: good/needs_improvement/poor
+-- (НЕ 4 — Google официально даёт только эти три). Единицы — как их шлёт
+-- web-vitals.js в GTM: LCP/INP/FCP/TTFB в миллисекундах, CLS — безразмерный
+-- индекс. Используется и в v_ga4_web_vitals_daily (построчно, день×страница),
+-- и должна применяться повторно в QL-чартах к уже агрегированному
+-- avg_value — НЕ бери rating построчно из вью, если чарт агрегирует за
+-- период длиннее дня/по нескольким страницам (см. QL-чарт Web Vitals в
+-- gsc-datalens-dashboards.md).
+--
+-- ⚠️ Упрощение: пороги Google рассчитаны на 75-й перцентиль реальных
+-- пользовательских измерений (CrUX), а не на простое среднее. Мы храним
+-- только средние (event_count + metric_value), без распределения — так
+-- что rating тут это оценка по среднему, приближение, не полноценная
+-- методология CrUX.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION analytics.web_vitals_rating(p_metric_name TEXT, p_value DOUBLE PRECISION)
+RETURNS TEXT AS $$
+BEGIN
+    IF p_value IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    CASE p_metric_name
+        WHEN 'LCP' THEN
+            IF p_value <= 2500 THEN RETURN 'good';
+            ELSIF p_value <= 4000 THEN RETURN 'needs_improvement';
+            ELSE RETURN 'poor'; END IF;
+        WHEN 'INP' THEN
+            IF p_value <= 200 THEN RETURN 'good';
+            ELSIF p_value <= 500 THEN RETURN 'needs_improvement';
+            ELSE RETURN 'poor'; END IF;
+        WHEN 'CLS' THEN
+            IF p_value <= 0.1 THEN RETURN 'good';
+            ELSIF p_value <= 0.25 THEN RETURN 'needs_improvement';
+            ELSE RETURN 'poor'; END IF;
+        WHEN 'FCP' THEN
+            IF p_value <= 1800 THEN RETURN 'good';
+            ELSIF p_value <= 3000 THEN RETURN 'needs_improvement';
+            ELSE RETURN 'poor'; END IF;
+        WHEN 'TTFB' THEN
+            IF p_value <= 800 THEN RETURN 'good';
+            ELSIF p_value <= 1800 THEN RETURN 'needs_improvement';
+            ELSE RETURN 'poor'; END IF;
+        ELSE
+            RETURN NULL;
+    END CASE;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+COMMENT ON FUNCTION analytics.web_vitals_rating IS 'Официальные 3-уровневые пороги Google (good/needs_improvement/poor) по имени метрики (LCP/INP/CLS/FCP/TTFB) и значению. LCP/INP/FCP/TTFB — миллисекунды, CLS — безразмерный индекс. Приближение по среднему, не по p75 (CrUX).';
+
+-- ============================================================
 -- v_ga4_web_vitals_daily — Core Web Vitals из GA4 (ga4.web_vitals),
 -- обогащённые project_name/cluster_topvisor_name через TopVisor
 -- (topvisor.dim_keywords/dim_groups — тот же принцип, что и в
@@ -652,7 +707,9 @@ COMMENT ON VIEW analytics.v_gsc_yearly IS 'Сводка по годам (вся 
 -- metric_value уже усреднён за день/страницу в GA4Collector — при агрегации
 -- за более длинный период в DataLens используй взвешенное среднее
 -- SUM(metric_value * event_count) / SUM(event_count), а не AVG(metric_value)
--- (та же логика, что и CTR в v_gsc_requests_kpi).
+-- (та же логика, что и CTR в v_gsc_requests_kpi). rating считается по
+-- этому же построчному metric_value через web_vitals_rating() — корректен
+-- только на этой гранулярности (день×страница), не после доп. агрегации.
 -- ============================================================
 
 CREATE OR REPLACE VIEW analytics.v_ga4_web_vitals_daily AS
@@ -674,10 +731,11 @@ SELECT
     sm.url,
     wv.event_count,
     wv.metric_value,
+    analytics.web_vitals_rating(wv.metric_name, wv.metric_value) AS rating,
     ucm.project_name,
     ucm.cluster_topvisor_name
 FROM ga4.web_vitals wv
 JOIN common.site_map sm ON sm.id = wv.target_url
 LEFT JOIN url_cluster_map ucm ON ucm.target_url_norm = rtrim(lower(sm.url), '/');
 
-COMMENT ON VIEW analytics.v_ga4_web_vitals_daily IS 'Core Web Vitals из GA4 (ga4.web_vitals), обогащённые project_name/cluster_topvisor_name через TopVisor dim_keywords/dim_groups (тот же принцип, что v_gsc_requests_daily). Гранулярность: день × метрика × страница (url). metric_value — среднее за день/страницу; для периодов длиннее дня используй SUM(metric_value*event_count)/SUM(event_count), не AVG(metric_value).';
+COMMENT ON VIEW analytics.v_ga4_web_vitals_daily IS 'Core Web Vitals из GA4 (ga4.web_vitals), обогащённые project_name/cluster_topvisor_name через TopVisor dim_keywords/dim_groups (тот же принцип, что v_gsc_requests_daily). Гранулярность: день × метрика × страница (url). metric_value — среднее за день/страницу; для периодов длиннее дня используй SUM(metric_value*event_count)/SUM(event_count), не AVG(metric_value). rating (good/needs_improvement/poor, официальные пороги Google) — через web_vitals_rating(), корректен только на этой гранулярности.';
