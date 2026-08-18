@@ -185,10 +185,13 @@ class GA4Collector extends GoogleBaseCollector {
 
   /**
    * Трансформация строк GA4 API (date, pagePath, customEvent:metric_name / eventCount, customEvent:metric_value)
-   * в формат для БД
+   * в формат для БД. Разные варианты pagePath (например, с / и без / на конце)
+   * после нормализации могут схлопнуться в один и тот же target_url — такие
+   * строки объединяются здесь (сумма event_count, взвешенное metric_value),
+   * иначе на уникальном (event_date, metric_name, target_url) будет конфликт.
    */
   transformData(rows, urlMapping) {
-    const records = [];
+    const merged = new Map();
 
     for (const row of rows) {
       const [rawDate, pagePath, metricName] = row.dimensionValues.map(v => v.value);
@@ -203,17 +206,30 @@ class GA4Collector extends GoogleBaseCollector {
       }
 
       const eventDate = `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}`;
+      const key = `${eventDate}|${metricName}|${targetUrlId}`;
 
-      records.push({
-        event_date: eventDate,
-        metric_name: metricName,
-        target_url: targetUrlId,
-        event_count: eventCount,
-        metric_value: eventCount > 0 ? metricValueSum / eventCount : 0
-      });
+      const existing = merged.get(key);
+      if (existing) {
+        existing.event_count += eventCount;
+        existing.sum_metric_value += metricValueSum;
+      } else {
+        merged.set(key, {
+          event_date: eventDate,
+          metric_name: metricName,
+          target_url: targetUrlId,
+          event_count: eventCount,
+          sum_metric_value: metricValueSum
+        });
+      }
     }
 
-    return records;
+    return Array.from(merged.values()).map(r => ({
+      event_date: r.event_date,
+      metric_name: r.metric_name,
+      target_url: r.target_url,
+      event_count: r.event_count,
+      metric_value: r.event_count > 0 ? r.sum_metric_value / r.event_count : 0
+    }));
   }
 
   /**
