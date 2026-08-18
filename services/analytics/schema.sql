@@ -731,9 +731,9 @@ SELECT
     sm.url,
     wv.event_count,
     wv.metric_value,
-    analytics.web_vitals_rating(wv.metric_name, wv.metric_value) AS rating,
     ucm.project_name,
-    ucm.cluster_topvisor_name
+    ucm.cluster_topvisor_name,
+    analytics.web_vitals_rating(wv.metric_name, wv.metric_value) AS rating
 FROM ga4.web_vitals wv
 JOIN common.site_map sm ON sm.id = wv.target_url
 LEFT JOIN url_cluster_map ucm ON ucm.target_url_norm = rtrim(lower(sm.url), '/');
