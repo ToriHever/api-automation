@@ -555,8 +555,8 @@ COMMENT ON VIEW analytics.v_gsc_requests_kpi_brand IS 'Та же логика bu
 -- Брендовые запросы исключены (NOT is_brand, как в v_gsc_requests_agg).
 --
 -- is_long_tail = word_count >= 4 СЛОВ И impressions_current не входит в
--- верхние 25% по объёму показов в рамках project_name (порог —
--- PERCENTILE_CONT(0.75) impressions_current, а не абсолютное число:
+-- верхние 10% по объёму показов в рамках project_name (порог —
+-- PERCENTILE_CONT(0.9) impressions_current, а не абсолютное число:
 -- проекты сильно отличаются по масштабу трафика, фиксированный порог вроде
 -- "impressions < 50" был бы бессмысленным и для крошечного, и для крупного
 -- сайта одновременно). Если project_name IS NULL (URL вне TopVisor-
@@ -630,7 +630,7 @@ word_counts AS (
 volume_threshold AS (
     SELECT
         project_name,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY impressions_current) AS impressions_p75
+        PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY impressions_current) AS impressions_p90
     FROM word_counts
     WHERE impressions_current > 0
     GROUP BY project_name
@@ -643,7 +643,7 @@ SELECT
     w.site,
     w.is_cluster_keyword,
     w.word_count,
-    (w.word_count >= 4 AND w.impressions_current <= COALESCE(vt.impressions_p75, w.impressions_current))
+    (w.word_count >= 4 AND w.impressions_current <= COALESCE(vt.impressions_p90, w.impressions_current))
         AS is_long_tail,
     w.clicks_current, w.clicks_prev,
     ROUND((w.clicks_current - w.clicks_prev) * 100.0 / NULLIF(w.clicks_prev, 0), 0) AS dyn_clicks_pct,
@@ -656,7 +656,7 @@ SELECT
 FROM word_counts w
 LEFT JOIN volume_threshold vt ON vt.project_name IS NOT DISTINCT FROM w.project_name;
 
-COMMENT ON VIEW analytics.v_gsc_longtail_requests IS 'Лонг-тейл-запросы (word_count >= 4 слов И impressions_current вне верхних 25% по объёму в рамках project_name) на уровне request × url, current/prev (30 дней скользящих), без бренда. url не агрегируется — один request может ранжироваться по нескольким страницам, без разбивки по url позиция/CTR были бы блендованным средним. Готовые dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска аномалий (просадка CTR/кликов при стабильной позиции) — порог просадки/стабильности задаётся параметром в DataLens, не здесь. Источник для QL-чарта "Лонг-тейл: аномалии" (см. gsc-datalens-dashboards.md).';
+COMMENT ON VIEW analytics.v_gsc_longtail_requests IS 'Лонг-тейл-запросы (word_count >= 4 слов И impressions_current вне верхних 10% по объёму в рамках project_name) на уровне request × url, current/prev (30 дней скользящих), без бренда. url не агрегируется — один request может ранжироваться по нескольким страницам, без разбивки по url позиция/CTR были бы блендованным средним. Готовые dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска аномалий (просадка CTR/кликов при стабильной позиции) — порог просадки/стабильности задаётся параметром в DataLens, не здесь. Источник для QL-чарта "Лонг-тейл: аномалии" (см. gsc-datalens-dashboards.md).';
 
 -- ============================================================
 -- v_gsc_monthly / v_gsc_yearly — сводная таблица по месяцам/годам.
