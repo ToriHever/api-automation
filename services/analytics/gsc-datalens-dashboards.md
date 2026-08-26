@@ -38,7 +38,7 @@ v_gsc_requests_daily (is_brand) ──▶ v_gsc_requests_kpi_brand — та же
 
 v_gsc_requests_daily ──▶ v_gsc_longtail_requests — current/prev пивот на уровне request × url
                             (не агрегирует по url — один запрос может ранжироваться сразу
-                            по нескольким страницам), is_long_tail (word_count >= 4 И низкий
+                            по нескольким страницам), is_long_tail (word_count >= 3 И низкий
                             объём показов), dyn_ctr_pct/dyn_clicks_pct/position_delta_abs
                             для поиска аномалий (просадка CTR/кликов при стабильной позиции)
 
