@@ -36,6 +36,11 @@ v_gsc_requests_kpi     — готовые ТОП3/5/10/все (bucket) × реж
 v_gsc_requests_daily (is_brand) ──▶ v_gsc_requests_kpi_brand — та же bucket-логика,
                                       но только site (RU/EN), без project/cluster/mode
 
+v_gsc_requests_daily ──▶ v_gsc_longtail_requests — current/prev пивот на уровне request,
+                            is_long_tail (word_count >= 3 И низкий объём показов),
+                            dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска
+                            аномалий (просадка CTR/кликов при стабильной позиции)
+
 gsc.search_console + TopVisor ──▶ v_gsc_monthly / v_gsc_yearly — сводка по месяцам/годам
                                       для отдельной большой таблицы (не часть основной цепочки,
                                       строится напрямую из gsc.search_console)
@@ -89,6 +94,44 @@ EXISTS (SELECT 1 FROM common.brand_keywords bk WHERE sc.request ILIKE '%' || bk.
 `position_filter`/`position_custom_min`/`position_custom_max` (та же логика, что в чарте 2).
 `project_name`/`cluster_topvisor_name`/`mode`/`brand_filter` тут не нужны — чарт по
 определению весь про бренд.
+
+## Датасет-чарт: Лонг-тейл — KPI и аномалии (v_gsc_longtail_requests)
+
+Источник — `analytics.v_gsc_longtail_requests` (одна строка = request, уже с current/prev
+и готовыми дельтами, брендовые запросы исключены). Что такое "лонг-тейл" и почему порог
+просадки не в SQL — см. комментарий над вью в [schema.sql](schema.sql).
+
+Обычный Датасет (не QL) — вся фильтрация делается стандартными Filters/Selectors по полям
+вью, никакой агрегации DataLens считать не должен (числа уже готовые, гранулярность —
+request, дублировать `SUM`/`AVG` поверх них нельзя).
+
+**Обязательный базовый фильтр на дашборде:** `is_long_tail = TRUE` — без него в датасет
+попадают все нелонг-тейл запросы тоже (вью отдаёт их для справки/сравнения, не выкидывает).
+
+**Параметры-Selector'ы для поиска аномалий** (задаются на дашборде, не в SQL):
+- `ctr_drop_threshold_pct` (Float, дефолт например `-30`) — фильтр `[dyn_ctr_pct] <= {{ctr_drop_threshold_pct}}`.
+- `clicks_drop_threshold_pct` (Float, дефолт `-30`) — фильтр `[dyn_clicks_pct] <= {{clicks_drop_threshold_pct}}`
+  (можно требовать оба условия сразу или любое одно — по вкусу, `AND`/`OR` между полями решается
+  формулой-условием на дашборде).
+- `position_stability_range` (Float, дефолт `1.5`) — фильтр `[position_delta_abs] <= {{position_stability_range}}`,
+  это и есть условие "позиции стабильные" (запрос остаётся в анomальном списке только если позиция
+  не уехала больше чем на этот разброс между current/prev).
+
+Комбинация всех трёх — собственно "аномалия": CTR и/или клики упали резче порога, а позиция
+почти не изменилась (падение объясняется не тем, что страница просела в выдаче).
+
+**Колонки датасета:** `request`, `project_name`, `cluster_topvisor_name`, `site`, `word_count`,
+`clicks_current`/`clicks_prev`/`dyn_clicks_pct`, `impressions_current`/`impressions_prev`/
+`dyn_impressions_pct`, `ctr_current`/`ctr_prev`/`dyn_ctr_pct`, `position_current`/`position_prev`/
+`position_delta_abs`.
+
+Сортировка по умолчанию для таблицы аномалий — `dyn_ctr_pct ASC` (сперва самые сильные
+просадки CTR).
+
+⚠️ `dyn_clicks_pct`/`dyn_ctr_pct`/`dyn_impressions_pct` — `NULL`, если `*_prev = 0` (новый запрос,
+не было показов в предыдущем периоде) — такие строки не аномалия, а новый лонг-тейл-запрос;
+если нужно их скрыть явно, добавь `[clicks_prev] > 0` (или аналогично по `impressions_prev`)
+в фильтр дашборда.
 
 ## QL-чарт: Web Vitals (график по метрике + кластерный фильтр)
 
