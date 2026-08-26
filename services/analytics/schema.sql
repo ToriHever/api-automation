@@ -571,7 +571,9 @@ COMMENT ON VIEW analytics.v_gsc_requests_kpi_brand IS 'Та же логика bu
 -- перенастройку чувствительности алерта.
 -- ============================================================
 
-CREATE OR REPLACE VIEW analytics.v_gsc_longtail_requests AS
+DROP VIEW IF EXISTS analytics.v_gsc_longtail_requests;
+
+CREATE VIEW analytics.v_gsc_longtail_requests AS
 WITH current_period AS (
     SELECT
         request, url, project_name, cluster_topvisor_name, site, 'current'::text AS period,
