@@ -548,7 +548,7 @@ COMMENT ON VIEW analytics.v_gsc_requests_kpi_brand IS 'Та же логика bu
 -- одна строка = request (уже пивот current/prev, не день×request).
 -- Брендовые запросы исключены (NOT is_brand, как в v_gsc_requests_agg).
 --
--- is_long_tail = word_count >= 3 СЛОВ И impressions_current не входит в
+-- is_long_tail = word_count >= 4 СЛОВ И impressions_current не входит в
 -- верхние 25% по объёму показов в рамках project_name (порог —
 -- PERCENTILE_CONT(0.75) impressions_current, а не абсолютное число:
 -- проекты сильно отличаются по масштабу трафика, фиксированный порог вроде
@@ -634,7 +634,7 @@ SELECT
     w.site,
     w.is_cluster_keyword,
     w.word_count,
-    (w.word_count >= 3 AND w.impressions_current <= COALESCE(vt.impressions_p75, w.impressions_current))
+    (w.word_count >= 4 AND w.impressions_current <= COALESCE(vt.impressions_p75, w.impressions_current))
         AS is_long_tail,
     w.clicks_current, w.clicks_prev,
     ROUND((w.clicks_current - w.clicks_prev) * 100.0 / NULLIF(w.clicks_prev, 0), 0) AS dyn_clicks_pct,
@@ -647,7 +647,7 @@ SELECT
 FROM word_counts w
 LEFT JOIN volume_threshold vt ON vt.project_name IS NOT DISTINCT FROM w.project_name;
 
-COMMENT ON VIEW analytics.v_gsc_longtail_requests IS 'Лонг-тейл-запросы (word_count >= 3 слов И impressions_current вне верхних 25% по объёму в рамках project_name) на уровне request, current/prev (30 дней скользящих), без бренда. Готовые dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска аномалий (просадка CTR/кликов при стабильной позиции) — порог просадки/стабильности задаётся параметром в DataLens, не здесь. Источник для QL-чарта "Лонг-тейл: аномалии" (см. gsc-datalens-dashboards.md).';
+COMMENT ON VIEW analytics.v_gsc_longtail_requests IS 'Лонг-тейл-запросы (word_count >= 4 слов И impressions_current вне верхних 25% по объёму в рамках project_name) на уровне request, current/prev (30 дней скользящих), без бренда. Готовые dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска аномалий (просадка CTR/кликов при стабильной позиции) — порог просадки/стабильности задаётся параметром в DataLens, не здесь. Источник для QL-чарта "Лонг-тейл: аномалии" (см. gsc-datalens-dashboards.md).';
 
 -- ============================================================
 -- v_gsc_monthly / v_gsc_yearly — сводная таблица по месяцам/годам.
