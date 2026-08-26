@@ -36,10 +36,11 @@ v_gsc_requests_kpi     — готовые ТОП3/5/10/все (bucket) × реж
 v_gsc_requests_daily (is_brand) ──▶ v_gsc_requests_kpi_brand — та же bucket-логика,
                                       но только site (RU/EN), без project/cluster/mode
 
-v_gsc_requests_daily ──▶ v_gsc_longtail_requests — current/prev пивот на уровне request,
-                            is_long_tail (word_count >= 4 И низкий объём показов),
-                            dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска
-                            аномалий (просадка CTR/кликов при стабильной позиции)
+v_gsc_requests_daily ──▶ v_gsc_longtail_requests — current/prev пивот на уровне request × url
+                            (не агрегирует по url — один запрос может ранжироваться сразу
+                            по нескольким страницам), is_long_tail (word_count >= 4 И низкий
+                            объём показов), dyn_ctr_pct/dyn_clicks_pct/position_delta_abs
+                            для поиска аномалий (просадка CTR/кликов при стабильной позиции)
 
 gsc.search_console + TopVisor ──▶ v_gsc_monthly / v_gsc_yearly — сводка по месяцам/годам
                                       для отдельной большой таблицы (не часть основной цепочки,
@@ -97,9 +98,14 @@ EXISTS (SELECT 1 FROM common.brand_keywords bk WHERE sc.request ILIKE '%' || bk.
 
 ## Датасет-чарт: Лонг-тейл — KPI и аномалии (v_gsc_longtail_requests)
 
-Источник — `analytics.v_gsc_longtail_requests` (одна строка = request, уже с current/prev
+Источник — `analytics.v_gsc_longtail_requests` (одна строка = request × url, уже с current/prev
 и готовыми дельтами, брендовые запросы исключены). Что такое "лонг-тейл" и почему порог
 просадки не в SQL — см. комментарий над вью в [schema.sql](schema.sql).
+
+⚠️ Один и тот же `request` может встречаться несколько раз с разными `url`, если он
+ранжируется сразу по нескольким страницам — это ожидаемо, не дубли. В таблице аномалий
+имеет смысл держать `url` рядом с `request`, иначе непонятно, к какой странице относится
+просадка.
 
 Обычный Датасет (не QL) — вся фильтрация делается стандартными Filters/Selectors по полям
 вью, никакой агрегации DataLens считать не должен (числа уже готовые, гранулярность —
@@ -120,7 +126,7 @@ request, дублировать `SUM`/`AVG` поверх них нельзя).
 Комбинация всех трёх — собственно "аномалия": CTR и/или клики упали резче порога, а позиция
 почти не изменилась (падение объясняется не тем, что страница просела в выдаче).
 
-**Колонки датасета:** `request`, `project_name`, `cluster_topvisor_name`, `site`, `word_count`,
+**Колонки датасета:** `request`, `url`, `project_name`, `cluster_topvisor_name`, `site`, `word_count`,
 `clicks_current`/`clicks_prev`/`dyn_clicks_pct`, `impressions_current`/`impressions_prev`/
 `dyn_impressions_pct`, `ctr_current`/`ctr_prev`/`dyn_ctr_pct`, `position_current`/`position_prev`/
 `position_delta_abs`.

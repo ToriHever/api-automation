@@ -288,14 +288,15 @@ SELECT
         WHEN sm.url ILIKE 'https://ddos-guard.ru%'  THEN 'RU'
         WHEN sm.url ILIKE 'https://ddos-guard.net%' THEN 'EN'
         ELSE 'other'
-    END AS site
+    END AS site,
+    sm.url
 FROM gsc.search_console sc
 JOIN common.site_map sm ON sm.id = sc.target_url
 LEFT JOIN url_cluster_map ucm ON ucm.target_url_norm = rtrim(lower(sm.url), '/')
 LEFT JOIN cluster_keywords ck ON ck.target_url_norm = rtrim(lower(sm.url), '/') AND ck.request = sc.request
 WHERE sc.event_date >= (CURRENT_DATE - '6 mons'::interval);
 
-COMMENT ON VIEW analytics.v_gsc_requests_daily IS 'Базовая вью по gsc.search_console (последние 6 мес.), обогащённая project_name/cluster_topvisor_name (через topvisor.dim_keywords/dim_groups), is_cluster_keyword, is_brand (common.brand_keywords) и site (RU/EN по домену). Источник для всех остальных v_gsc_requests_*.';
+COMMENT ON VIEW analytics.v_gsc_requests_daily IS 'Базовая вью по gsc.search_console (последние 6 мес.), обогащённая project_name/cluster_topvisor_name (через topvisor.dim_keywords/dim_groups), is_cluster_keyword, is_brand (common.brand_keywords), site (RU/EN по домену) и url (сырой common.site_map.url — один request может ранжироваться по нескольким url, url добавлен последней колонкой из-за ограничения CREATE OR REPLACE VIEW на порядок полей). Источник для всех остальных v_gsc_requests_*.';
 
 -- ============================================================
 -- v_gsc_requests_agg — current/prev (30 дней скользящих) на уровне request,
@@ -545,7 +546,12 @@ COMMENT ON VIEW analytics.v_gsc_requests_kpi_brand IS 'Та же логика bu
 -- v_gsc_longtail_requests — лонг-тейл-запросы (current/prev, 30 дней
 -- скользящих, как в v_gsc_requests_agg) с готовыми дельтами для поиска
 -- аномалий: резкое падение CTR/кликов при стабильной позиции. Гранулярность:
--- одна строка = request (уже пивот current/prev, не день×request).
+-- одна строка = request × url (уже пивот current/prev, не день×request×url).
+-- url — НЕ агрегируется по кластеру/проекту в одну строку: один и тот же
+-- request может ранжироваться сразу по нескольким страницам, и без
+-- разбивки по url позиция/CTR были бы блендованным средним по всем этим
+-- страницам — ложная "стабильность" позиции могла бы маскировать провал
+-- на одной конкретной странице, скомпенсированный ростом на другой.
 -- Брендовые запросы исключены (NOT is_brand, как в v_gsc_requests_agg).
 --
 -- is_long_tail = word_count >= 4 СЛОВ И impressions_current не входит в
@@ -568,7 +574,7 @@ COMMENT ON VIEW analytics.v_gsc_requests_kpi_brand IS 'Та же логика bu
 CREATE OR REPLACE VIEW analytics.v_gsc_longtail_requests AS
 WITH current_period AS (
     SELECT
-        request, project_name, cluster_topvisor_name, site, 'current'::text AS period,
+        request, url, project_name, cluster_topvisor_name, site, 'current'::text AS period,
         sum(clicks) AS clicks,
         sum(impressions) AS impressions,
         round(sum(clicks)::numeric * 100.0 / NULLIF(sum(impressions), 0), 4) AS ctr,
@@ -577,11 +583,11 @@ WITH current_period AS (
     FROM analytics.v_gsc_requests_daily
     WHERE event_date >= (CURRENT_DATE - '30 days'::interval)
       AND NOT is_brand
-    GROUP BY request, project_name, cluster_topvisor_name, site
+    GROUP BY request, url, project_name, cluster_topvisor_name, site
 ),
 prev_period AS (
     SELECT
-        request, project_name, cluster_topvisor_name, site, 'prev'::text AS period,
+        request, url, project_name, cluster_topvisor_name, site, 'prev'::text AS period,
         sum(clicks) AS clicks,
         sum(impressions) AS impressions,
         round(sum(clicks)::numeric * 100.0 / NULLIF(sum(impressions), 0), 4) AS ctr,
@@ -591,7 +597,7 @@ prev_period AS (
     WHERE event_date >= (CURRENT_DATE - '60 days'::interval)
       AND event_date < (CURRENT_DATE - '30 days'::interval)
       AND NOT is_brand
-    GROUP BY request, project_name, cluster_topvisor_name, site
+    GROUP BY request, url, project_name, cluster_topvisor_name, site
 ),
 combined AS (
     SELECT * FROM current_period
@@ -600,7 +606,7 @@ combined AS (
 ),
 pivoted AS (
     SELECT
-        request, project_name, cluster_topvisor_name, site,
+        request, url, project_name, cluster_topvisor_name, site,
         bool_or(is_cluster_keyword) AS is_cluster_keyword,
         MAX(clicks)      FILTER (WHERE period = 'current') AS clicks_current,
         MAX(clicks)      FILTER (WHERE period = 'prev')    AS clicks_prev,
@@ -611,7 +617,7 @@ pivoted AS (
         MAX("position")  FILTER (WHERE period = 'current') AS position_current,
         MAX("position")  FILTER (WHERE period = 'prev')    AS position_prev
     FROM combined
-    GROUP BY request, project_name, cluster_topvisor_name, site
+    GROUP BY request, url, project_name, cluster_topvisor_name, site
 ),
 word_counts AS (
     SELECT
@@ -629,6 +635,7 @@ volume_threshold AS (
 )
 SELECT
     w.request,
+    w.url,
     w.project_name,
     w.cluster_topvisor_name,
     w.site,
@@ -647,7 +654,7 @@ SELECT
 FROM word_counts w
 LEFT JOIN volume_threshold vt ON vt.project_name IS NOT DISTINCT FROM w.project_name;
 
-COMMENT ON VIEW analytics.v_gsc_longtail_requests IS 'Лонг-тейл-запросы (word_count >= 4 слов И impressions_current вне верхних 25% по объёму в рамках project_name) на уровне request, current/prev (30 дней скользящих), без бренда. Готовые dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска аномалий (просадка CTR/кликов при стабильной позиции) — порог просадки/стабильности задаётся параметром в DataLens, не здесь. Источник для QL-чарта "Лонг-тейл: аномалии" (см. gsc-datalens-dashboards.md).';
+COMMENT ON VIEW analytics.v_gsc_longtail_requests IS 'Лонг-тейл-запросы (word_count >= 4 слов И impressions_current вне верхних 25% по объёму в рамках project_name) на уровне request × url, current/prev (30 дней скользящих), без бренда. url не агрегируется — один request может ранжироваться по нескольким страницам, без разбивки по url позиция/CTR были бы блендованным средним. Готовые dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска аномалий (просадка CTR/кликов при стабильной позиции) — порог просадки/стабильности задаётся параметром в DataLens, не здесь. Источник для QL-чарта "Лонг-тейл: аномалии" (см. gsc-datalens-dashboards.md).';
 
 -- ============================================================
 -- v_gsc_monthly / v_gsc_yearly — сводная таблица по месяцам/годам.
