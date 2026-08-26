@@ -294,9 +294,9 @@ FROM gsc.search_console sc
 JOIN common.site_map sm ON sm.id = sc.target_url
 LEFT JOIN url_cluster_map ucm ON ucm.target_url_norm = rtrim(lower(sm.url), '/')
 LEFT JOIN cluster_keywords ck ON ck.target_url_norm = rtrim(lower(sm.url), '/') AND ck.request = sc.request
-WHERE sc.event_date >= (CURRENT_DATE - '6 mons'::interval);
+WHERE sc.event_date >= (CURRENT_DATE - '7 mons'::interval);
 
-COMMENT ON VIEW analytics.v_gsc_requests_daily IS 'Базовая вью по gsc.search_console (последние 6 мес.), обогащённая project_name/cluster_topvisor_name (через topvisor.dim_keywords/dim_groups), is_cluster_keyword, is_brand (common.brand_keywords), site (RU/EN по домену) и url (сырой common.site_map.url — один request может ранжироваться по нескольким url, url добавлен последней колонкой из-за ограничения CREATE OR REPLACE VIEW на порядок полей). Источник для всех остальных v_gsc_requests_*.';
+COMMENT ON VIEW analytics.v_gsc_requests_daily IS 'Базовая вью по gsc.search_console (последние 7 мес. — запас под prev-окно в 180 дней v_gsc_longtail_requests, у 6 мес. не всегда хватает дней), обогащённая project_name/cluster_topvisor_name (через topvisor.dim_keywords/dim_groups), is_cluster_keyword, is_brand (common.brand_keywords), site (RU/EN по домену) и url (сырой common.site_map.url — один request может ранжироваться по нескольким url, url добавлен последней колонкой из-за ограничения CREATE OR REPLACE VIEW на порядок полей). Источник для всех остальных v_gsc_requests_*.';
 
 -- ============================================================
 -- v_gsc_requests_agg — current/prev (30 дней скользящих) на уровне request,
@@ -543,9 +543,18 @@ LEFT JOIN totals t ON t.site = p.site;
 COMMENT ON VIEW analytics.v_gsc_requests_kpi_brand IS 'Та же логика bucket (top3/top5/top10/all) × current/prev, что и v_gsc_requests_kpi, но только по брендовым запросам (is_brand) и с одним измерением site (RU/EN/other) вместо project/cluster/mode. ctr взвешен по объёму.';
 
 -- ============================================================
--- v_gsc_longtail_requests — лонг-тейл-запросы (current/prev, 30 дней
--- скользящих, как в v_gsc_requests_agg) с готовыми дельтами для поиска
--- аномалий: резкое падение CTR/кликов при стабильной позиции. Гранулярность:
+-- v_gsc_longtail_requests — лонг-тейл-запросы (current/prev, 90 дней
+-- скользящих — шире, чем в v_gsc_requests_agg, т.к. на 30 днях лонг-тейл
+-- слишком тонкий по объёму для устойчивого сравнения) с готовыми дельтами
+-- для поиска аномалий: резкое падение CTR/кликов при стабильной позиции.
+-- ⚠️ При 90/90 prev-окно уходит на 91-180 дней назад — если это пересекает
+-- период нестабильного сбора GSC (октябрь 2025 — конец апреля 2026, см.
+-- gsc-datalens-dashboards.md), prev будет занижен не из-за реального
+-- падения, а из-за дыр в сборе. Проверяй актуальность этого предупреждения
+-- по текущей дате перед тем, как доверять аномалиям с занижением сразу
+-- у многих запросов одновременно (это симптом дыры в сборе, не реальной
+-- просадки CTR/кликов).
+-- Гранулярность:
 -- одна строка = request × url (уже пивот current/prev, не день×request×url).
 -- url — НЕ агрегируется по кластеру/проекту в одну строку: один и тот же
 -- request может ранжироваться сразу по нескольким страницам, и без
@@ -583,7 +592,7 @@ WITH current_period AS (
         round(avg("position"), 1) AS "position",
         bool_or(is_cluster_keyword) AS is_cluster_keyword
     FROM analytics.v_gsc_requests_daily
-    WHERE event_date >= (CURRENT_DATE - '30 days'::interval)
+    WHERE event_date >= (CURRENT_DATE - '90 days'::interval)
       AND NOT is_brand
     GROUP BY request, url, project_name, cluster_topvisor_name, site
 ),
@@ -596,8 +605,8 @@ prev_period AS (
         round(avg("position"), 1) AS "position",
         bool_or(is_cluster_keyword) AS is_cluster_keyword
     FROM analytics.v_gsc_requests_daily
-    WHERE event_date >= (CURRENT_DATE - '60 days'::interval)
-      AND event_date < (CURRENT_DATE - '30 days'::interval)
+    WHERE event_date >= (CURRENT_DATE - '180 days'::interval)
+      AND event_date < (CURRENT_DATE - '90 days'::interval)
       AND NOT is_brand
     GROUP BY request, url, project_name, cluster_topvisor_name, site
 ),
@@ -656,7 +665,7 @@ SELECT
 FROM word_counts w
 LEFT JOIN volume_threshold vt ON vt.project_name IS NOT DISTINCT FROM w.project_name;
 
-COMMENT ON VIEW analytics.v_gsc_longtail_requests IS 'Лонг-тейл-запросы (word_count >= 3 слов И impressions_current вне верхних 10% по объёму в рамках project_name) на уровне request × url, current/prev (30 дней скользящих), без бренда. url не агрегируется — один request может ранжироваться по нескольким страницам, без разбивки по url позиция/CTR были бы блендованным средним. Готовые dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска аномалий (просадка CTR/кликов при стабильной позиции) — порог просадки/стабильности задаётся параметром в DataLens, не здесь. Источник для QL-чарта "Лонг-тейл: аномалии" (см. gsc-datalens-dashboards.md).';
+COMMENT ON VIEW analytics.v_gsc_longtail_requests IS 'Лонг-тейл-запросы (word_count >= 3 слов И impressions_current вне верхних 10% по объёму в рамках project_name) на уровне request × url, current/prev (90 дней скользящих), без бренда. url не агрегируется — один request может ранжироваться по нескольким страницам, без разбивки по url позиция/CTR были бы блендованным средним. Готовые dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска аномалий (просадка CTR/кликов при стабильной позиции) — порог просадки/стабильности задаётся параметром в DataLens, не здесь. Источник для QL-чарта "Лонг-тейл: аномалии" (см. gsc-datalens-dashboards.md).';
 
 -- ============================================================
 -- v_gsc_monthly / v_gsc_yearly — сводная таблица по месяцам/годам.

@@ -36,7 +36,8 @@ v_gsc_requests_kpi     — готовые ТОП3/5/10/все (bucket) × реж
 v_gsc_requests_daily (is_brand) ──▶ v_gsc_requests_kpi_brand — та же bucket-логика,
                                       но только site (RU/EN), без project/cluster/mode
 
-v_gsc_requests_daily ──▶ v_gsc_longtail_requests — current/prev пивот на уровне request × url
+v_gsc_requests_daily ──▶ v_gsc_longtail_requests — current/prev (90/90 дней скользящих,
+                            шире, чем в v_gsc_requests_agg) пивот на уровне request × url
                             (не агрегирует по url — один запрос может ранжироваться сразу
                             по нескольким страницам), is_long_tail (word_count >= 3 И низкий
                             объём показов), dyn_ctr_pct/dyn_clicks_pct/position_delta_abs
@@ -101,6 +102,14 @@ EXISTS (SELECT 1 FROM common.brand_keywords bk WHERE sc.request ILIKE '%' || bk.
 Источник — `analytics.v_gsc_longtail_requests` (одна строка = request × url, уже с current/prev
 и готовыми дельтами, брендовые запросы исключены). Что такое "лонг-тейл" и почему порог
 просадки не в SQL — см. комментарий над вью в [schema.sql](schema.sql).
+
+⚠️ **`current`/`prev` — 90/90 дней скользящих, `prev` уходит на 91-180 дней назад.**
+Ежедневный сбор GSC был нестабилен с октября 2025 по конец апреля 2026 (см. "Источник
+данных" выше) — если сегодняшняя дата такая, что 91-180 дней назад попадает в этот
+интервал, `prev`-показатели будут занижены не из-за реальной просадки, а из-за дыр
+в сборе. Если в списке аномалий внезапно резко выросло число строк сразу по многим
+непохожим друг на друга запросам одновременно — в первую очередь проверь это, не
+качество контента/выдачи.
 
 ⚠️ Один и тот же `request` может встречаться несколько раз с разными `url`, если он
 ранжируется сразу по нескольким страницам — это ожидаемо, не дубли. В таблице аномалий
