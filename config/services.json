@@ -59,12 +59,12 @@
     "env_prefix": "YANDEX_METRIKA_"
   },
   "yandex-serp": {
-    "enabled": true,
-    "schedule": "0 12 * * *",
+    "enabled": false,
+    "schedule": "0 12 * * 1",
     "timeout": 600000,
     "retries": 2,
     "dateOffset": 0,
-    "description": "Yandex Search API — полная выдача (ТОП-N, платный API, пока в рамках гранта — работает бесплатно) по фиксированному списку запросов. Данные берутся за текущий день. Запускается вместе с topvisor/gsc в общем утреннем батче.",
+    "description": "Yandex Search API — полная выдача (ТОП-N) по фиксированному списку запросов (services/yandex-serp/keywords/target_keywords.txt). Платный метод — ~0.485 ₽/запрос по прайсу (грант, покрывавший его, закончился 2026-09-02, см. чат). Данные берутся за текущий день. Раз в неделю (не ежедневно — дороже Wordstat в ~24 раза за запрос), поэтому отдельная еженедельная cron-строка (см. services/yandex-serp/README.md), НЕ общий утренний батч enabled:true.",
     "env_prefix": "YANDEX_SEARCH_"
   },
   "domains-meta": {
