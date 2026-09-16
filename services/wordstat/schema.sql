@@ -94,7 +94,7 @@ BEGIN
         WHERE con.conrelid = 'wordstat.tmp_dynamics'::regclass
           AND con.contype = 'u'
           AND (
-              SELECT array_agg(pa.attname ORDER BY pa.attname)
+              SELECT array_agg(pa.attname::text ORDER BY pa.attname)
               FROM unnest(con.conkey) AS ck(attnum)
               JOIN pg_attribute pa
                 ON pa.attrelid = con.conrelid AND pa.attnum = ck.attnum
@@ -123,7 +123,7 @@ BEGIN
         WHERE con.conrelid = 'wordstat.collection_queue'::regclass
           AND con.contype = 'u'
           AND (
-              SELECT array_agg(pa.attname ORDER BY pa.attname)
+              SELECT array_agg(pa.attname::text ORDER BY pa.attname)
               FROM unnest(con.conkey) AS ck(attnum)
               JOIN pg_attribute pa
                 ON pa.attrelid = con.conrelid AND pa.attnum = ck.attnum
