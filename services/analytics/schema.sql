@@ -288,14 +288,15 @@ SELECT
         WHEN sm.url ILIKE 'https://ddos-guard.ru%'  THEN 'RU'
         WHEN sm.url ILIKE 'https://ddos-guard.net%' THEN 'EN'
         ELSE 'other'
-    END AS site
+    END AS site,
+    sm.url
 FROM gsc.search_console sc
 JOIN common.site_map sm ON sm.id = sc.target_url
 LEFT JOIN url_cluster_map ucm ON ucm.target_url_norm = rtrim(lower(sm.url), '/')
 LEFT JOIN cluster_keywords ck ON ck.target_url_norm = rtrim(lower(sm.url), '/') AND ck.request = sc.request
 WHERE sc.event_date >= (CURRENT_DATE - '6 mons'::interval);
 
-COMMENT ON VIEW analytics.v_gsc_requests_daily IS 'Базовая вью по gsc.search_console (последние 6 мес.), обогащённая project_name/cluster_topvisor_name (через topvisor.dim_keywords/dim_groups), is_cluster_keyword, is_brand (common.brand_keywords) и site (RU/EN по домену). Источник для всех остальных v_gsc_requests_*.';
+COMMENT ON VIEW analytics.v_gsc_requests_daily IS 'Базовая вью по gsc.search_console (последние 6 мес.), обогащённая project_name/cluster_topvisor_name (через topvisor.dim_keywords/dim_groups), is_cluster_keyword, is_brand (common.brand_keywords), site (RU/EN по домену) и url (сырой common.site_map.url — один request может ранжироваться по нескольким url, url добавлен последней колонкой из-за ограничения CREATE OR REPLACE VIEW на порядок полей). Источник для всех остальных v_gsc_requests_*.';
 
 -- ============================================================
 -- v_gsc_requests_agg — current/prev (30 дней скользящих) на уровне request,
@@ -542,6 +543,111 @@ LEFT JOIN totals t ON t.site = p.site;
 COMMENT ON VIEW analytics.v_gsc_requests_kpi_brand IS 'Та же логика bucket (top3/top5/top10/all) × current/prev, что и v_gsc_requests_kpi, но только по брендовым запросам (is_brand) и с одним измерением site (RU/EN/other) вместо project/cluster/mode. ctr взвешен по объёму.';
 
 -- ============================================================
+-- v_gsc_longtail_requests — лонг-тейл-запросы (current/prev, 60 дней
+-- скользящих — шире, чем в v_gsc_requests_agg, т.к. на 30 днях лонг-тейл
+-- слишком тонкий по объёму для устойчивого сравнения) с готовыми дельтами
+-- для поиска аномалий: резкое падение CTR/кликов при стабильной позиции.
+-- Гранулярность:
+-- одна строка = request × url (уже пивот current/prev, не день×request×url).
+-- url — НЕ агрегируется по кластеру/проекту в одну строку: один и тот же
+-- request может ранжироваться сразу по нескольким страницам, и без
+-- разбивки по url позиция/CTR были бы блендованным средним по всем этим
+-- страницам — ложная "стабильность" позиции могла бы маскировать провал
+-- на одной конкретной странице, скомпенсированный ростом на другой.
+-- Брендовые запросы исключены (NOT is_brand, как в v_gsc_requests_agg).
+--
+-- is_long_tail = word_count >= 3 СЛОВ, БЕЗ условия по объёму показов
+-- (было: + impressions_current вне верхних 10% по проекту через
+-- PERCENTILE_CONT — убрано намеренно, эксперимент: смотрим, достаточно
+-- ли для отсечения "лонг-тейла" одного числа слов, или объёмный шум
+-- на низкочастотных запросах всё же придётся возвращать назад).
+--
+-- Порог "резкого падения" и "стабильности позиции" НЕ хардкодится здесь —
+-- вью отдаёт сырые dyn_ctr_pct/dyn_clicks_pct/position_delta_abs, а сам
+-- порог (% просадки, допустимый разброс позиции) задаётся параметром
+-- Selector'а в DataLens, см. QL-чарт "Лонг-тейл: аномалии" в
+-- gsc-datalens-dashboards.md — чтобы не перевыпускать вью на каждую
+-- перенастройку чувствительности алерта.
+-- ============================================================
+
+DROP VIEW IF EXISTS analytics.v_gsc_longtail_requests;
+
+CREATE VIEW analytics.v_gsc_longtail_requests AS
+WITH current_period AS (
+    SELECT
+        request, url, project_name, cluster_topvisor_name, site, 'current'::text AS period,
+        sum(clicks) AS clicks,
+        sum(impressions) AS impressions,
+        round(sum(clicks)::numeric * 100.0 / NULLIF(sum(impressions), 0), 4) AS ctr,
+        round(avg("position"), 1) AS "position",
+        bool_or(is_cluster_keyword) AS is_cluster_keyword
+    FROM analytics.v_gsc_requests_daily
+    WHERE event_date >= (CURRENT_DATE - '60 days'::interval)
+      AND NOT is_brand
+    GROUP BY request, url, project_name, cluster_topvisor_name, site
+),
+prev_period AS (
+    SELECT
+        request, url, project_name, cluster_topvisor_name, site, 'prev'::text AS period,
+        sum(clicks) AS clicks,
+        sum(impressions) AS impressions,
+        round(sum(clicks)::numeric * 100.0 / NULLIF(sum(impressions), 0), 4) AS ctr,
+        round(avg("position"), 1) AS "position",
+        bool_or(is_cluster_keyword) AS is_cluster_keyword
+    FROM analytics.v_gsc_requests_daily
+    WHERE event_date >= (CURRENT_DATE - '120 days'::interval)
+      AND event_date < (CURRENT_DATE - '60 days'::interval)
+      AND NOT is_brand
+    GROUP BY request, url, project_name, cluster_topvisor_name, site
+),
+combined AS (
+    SELECT * FROM current_period
+    UNION ALL
+    SELECT * FROM prev_period
+),
+pivoted AS (
+    SELECT
+        request, url, project_name, cluster_topvisor_name, site,
+        bool_or(is_cluster_keyword) AS is_cluster_keyword,
+        MAX(clicks)      FILTER (WHERE period = 'current') AS clicks_current,
+        MAX(clicks)      FILTER (WHERE period = 'prev')    AS clicks_prev,
+        MAX(impressions) FILTER (WHERE period = 'current') AS impressions_current,
+        MAX(impressions) FILTER (WHERE period = 'prev')    AS impressions_prev,
+        MAX(ctr)         FILTER (WHERE period = 'current') AS ctr_current,
+        MAX(ctr)         FILTER (WHERE period = 'prev')    AS ctr_prev,
+        MAX("position")  FILTER (WHERE period = 'current') AS position_current,
+        MAX("position")  FILTER (WHERE period = 'prev')    AS position_prev
+    FROM combined
+    GROUP BY request, url, project_name, cluster_topvisor_name, site
+),
+word_counts AS (
+    SELECT
+        p.*,
+        array_length(regexp_split_to_array(trim(both from p.request), '\s+'), 1) AS word_count
+    FROM pivoted p
+)
+SELECT
+    w.request,
+    w.url,
+    w.project_name,
+    w.cluster_topvisor_name,
+    w.site,
+    w.is_cluster_keyword,
+    w.word_count,
+    (w.word_count >= 3) AS is_long_tail,
+    w.clicks_current, w.clicks_prev,
+    ROUND((w.clicks_current - w.clicks_prev) * 100.0 / NULLIF(w.clicks_prev, 0), 0) AS dyn_clicks_pct,
+    w.impressions_current, w.impressions_prev,
+    ROUND((w.impressions_current - w.impressions_prev) * 100.0 / NULLIF(w.impressions_prev, 0), 0) AS dyn_impressions_pct,
+    w.ctr_current, w.ctr_prev,
+    ROUND((w.ctr_current - w.ctr_prev) * 100.0 / NULLIF(w.ctr_prev, 0), 0) AS dyn_ctr_pct,
+    w.position_current, w.position_prev,
+    ROUND(ABS(w.position_current - w.position_prev), 1) AS position_delta_abs
+FROM word_counts w;
+
+COMMENT ON VIEW analytics.v_gsc_longtail_requests IS 'Лонг-тейл-запросы (word_count >= 3 слов, БЕЗ условия по объёму показов — убрано в рамках эксперимента, см. комментарий над вью) на уровне request × url, current/prev (60 дней скользящих), без бренда. url не агрегируется — один request может ранжироваться по нескольким страницам, без разбивки по url позиция/CTR были бы блендованным средним. Готовые dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска аномалий (просадка CTR/кликов при стабильной позиции) — порог просадки/стабильности задаётся параметром в DataLens, не здесь. Источник для QL-чарта "Лонг-тейл: аномалии" (см. gsc-datalens-dashboards.md).';
+
+-- ============================================================
 -- v_gsc_monthly / v_gsc_yearly — сводная таблица по месяцам/годам.
 -- Раньше группировались по product_name из common.products (таблица
 -- дропнута — содержала дубли по url_id, искажавшие данные). Теперь
@@ -691,3 +797,99 @@ LEFT JOIN common.requests cr ON cr.request = s.request
 LEFT JOIN common.hubs h      ON h.hub_id = cr.hub_id;
 
 COMMENT ON VIEW analytics.v_serp_results IS 'yandex.serp_results + два независимых фильтра для DataLens, оба без привязки к TopVisor: target_url (через common.site_map, общий принцип с gsc.search_console/topvisor.positions) и group_name (через common.requests.hub_id -> common.hubs, НЕ topvisor.dim_groups). Гранулярность как в исходной таблице — один документ выдачи за день, конкуренты включены (target_url/group_name = NULL для чужих доменов).';
+-- web_vitals_rating(metric_name, value) — единая функция с официальными
+-- порогами Google для Core Web Vitals (https://web.dev/articles/vitals#core-web-vitals-thresholds,
+-- FCP/TTFB — https://web.dev/articles/fcp / ttfb). 3 уровня: good/needs_improvement/poor
+-- (НЕ 4 — Google официально даёт только эти три). Единицы — как их шлёт
+-- web-vitals.js в GTM: LCP/INP/FCP/TTFB в миллисекундах, CLS — безразмерный
+-- индекс. Используется и в v_ga4_web_vitals_daily (построчно, день×страница),
+-- и должна применяться повторно в QL-чартах к уже агрегированному
+-- avg_value — НЕ бери rating построчно из вью, если чарт агрегирует за
+-- период длиннее дня/по нескольким страницам (см. QL-чарт Web Vitals в
+-- gsc-datalens-dashboards.md).
+--
+-- ⚠️ Упрощение: пороги Google рассчитаны на 75-й перцентиль реальных
+-- пользовательских измерений (CrUX), а не на простое среднее. Мы храним
+-- только средние (event_count + metric_value), без распределения — так
+-- что rating тут это оценка по среднему, приближение, не полноценная
+-- методология CrUX.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION analytics.web_vitals_rating(p_metric_name TEXT, p_value DOUBLE PRECISION)
+RETURNS TEXT AS $$
+BEGIN
+    IF p_value IS NULL THEN
+        RETURN NULL;
+    END IF;
+
+    CASE p_metric_name
+        WHEN 'LCP' THEN
+            IF p_value <= 2500 THEN RETURN 'good';
+            ELSIF p_value <= 4000 THEN RETURN 'needs_improvement';
+            ELSE RETURN 'poor'; END IF;
+        WHEN 'INP' THEN
+            IF p_value <= 200 THEN RETURN 'good';
+            ELSIF p_value <= 500 THEN RETURN 'needs_improvement';
+            ELSE RETURN 'poor'; END IF;
+        WHEN 'CLS' THEN
+            IF p_value <= 0.1 THEN RETURN 'good';
+            ELSIF p_value <= 0.25 THEN RETURN 'needs_improvement';
+            ELSE RETURN 'poor'; END IF;
+        WHEN 'FCP' THEN
+            IF p_value <= 1800 THEN RETURN 'good';
+            ELSIF p_value <= 3000 THEN RETURN 'needs_improvement';
+            ELSE RETURN 'poor'; END IF;
+        WHEN 'TTFB' THEN
+            IF p_value <= 800 THEN RETURN 'good';
+            ELSIF p_value <= 1800 THEN RETURN 'needs_improvement';
+            ELSE RETURN 'poor'; END IF;
+        ELSE
+            RETURN NULL;
+    END CASE;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+COMMENT ON FUNCTION analytics.web_vitals_rating IS 'Официальные 3-уровневые пороги Google (good/needs_improvement/poor) по имени метрики (LCP/INP/CLS/FCP/TTFB) и значению. LCP/INP/FCP/TTFB — миллисекунды, CLS — безразмерный индекс. Приближение по среднему, не по p75 (CrUX).';
+
+-- ============================================================
+-- v_ga4_web_vitals_daily — Core Web Vitals из GA4 (ga4.web_vitals),
+-- обогащённые project_name/cluster_topvisor_name через TopVisor
+-- (topvisor.dim_keywords/dim_groups — тот же принцип, что и в
+-- v_gsc_requests_daily, НЕ common.clusters_topvisor — та связка
+-- заполнялась вручную и содержала коллизию, см. gsc-datalens-dashboards.md).
+-- Гранулярность: одна строка = день × метрика (LCP/CLS/INP/FCP/TTFB) × страница.
+-- metric_value уже усреднён за день/страницу в GA4Collector — при агрегации
+-- за более длинный период в DataLens используй взвешенное среднее
+-- SUM(metric_value * event_count) / SUM(event_count), а не AVG(metric_value)
+-- (та же логика, что и CTR в v_gsc_requests_kpi). rating считается по
+-- этому же построчному metric_value через web_vitals_rating() — корректен
+-- только на этой гранулярности (день×страница), не после доп. агрегации.
+-- ============================================================
+
+CREATE OR REPLACE VIEW analytics.v_ga4_web_vitals_daily AS
+WITH url_cluster_map AS (
+    SELECT DISTINCT ON (rtrim(lower(k.target), '/'))
+        rtrim(lower(k.target), '/') AS target_url_norm,
+        g.name AS cluster_topvisor_name,
+        dpe.project_name
+    FROM topvisor.dim_keywords k
+    JOIN topvisor.dim_groups g ON g.id = k.group_id
+    JOIN topvisor.dim_projects tp ON tp.id = k.project_id
+    JOIN common.dim_projects_engines dpe ON dpe.topvisor_project_id = tp.id::text
+    WHERE k.target IS NOT NULL
+    ORDER BY rtrim(lower(k.target), '/'), g.id
+)
+SELECT
+    wv.event_date,
+    wv.metric_name,
+    sm.url,
+    wv.event_count,
+    wv.metric_value,
+    ucm.project_name,
+    ucm.cluster_topvisor_name,
+    analytics.web_vitals_rating(wv.metric_name, wv.metric_value) AS rating
+FROM ga4.web_vitals wv
+JOIN common.site_map sm ON sm.id = wv.target_url
+LEFT JOIN url_cluster_map ucm ON ucm.target_url_norm = rtrim(lower(sm.url), '/');
+
+COMMENT ON VIEW analytics.v_ga4_web_vitals_daily IS 'Core Web Vitals из GA4 (ga4.web_vitals), обогащённые project_name/cluster_topvisor_name через TopVisor dim_keywords/dim_groups (тот же принцип, что v_gsc_requests_daily). Гранулярность: день × метрика × страница (url). metric_value — среднее за день/страницу; для периодов длиннее дня используй SUM(metric_value*event_count)/SUM(event_count), не AVG(metric_value). rating (good/needs_improvement/poor, официальные пороги Google) — через web_vitals_rating(), корректен только на этой гранулярности.';

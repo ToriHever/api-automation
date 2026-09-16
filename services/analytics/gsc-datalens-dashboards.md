@@ -4,6 +4,9 @@
 это не хранится в БД/репозитории, поэтому легко забыть логику. SQL-вью, на которых всё
 строится, — в [schema.sql](schema.sql).
 
+Несмотря на название файла, в [schema.sql](schema.sql) заодно лежит и `analytics.v_ga4_web_vitals_daily`
+(Core Web Vitals из GA4, не GSC) — см. раздел "QL-чарт: Web Vitals" ниже, отдельный файл заводить не стали.
+
 ## Источник данных
 
 `gsc.search_console` — сырые данные Google Search Console (event_date, request, target_url → id
@@ -32,6 +35,14 @@ v_gsc_requests_kpi     — готовые ТОП3/5/10/все (bucket) × реж
 
 v_gsc_requests_daily (is_brand) ──▶ v_gsc_requests_kpi_brand — та же bucket-логика,
                                       но только site (RU/EN), без project/cluster/mode
+
+v_gsc_requests_daily ──▶ v_gsc_longtail_requests — current/prev (60/60 дней скользящих,
+                            шире, чем в v_gsc_requests_agg) пивот на уровне request × url
+                            (не агрегирует по url — один запрос может ранжироваться сразу
+                            по нескольким страницам), is_long_tail (только word_count >= 3,
+                            без условия по объёму показов — эксперимент, см. schema.sql),
+                            dyn_ctr_pct/dyn_clicks_pct/position_delta_abs для поиска
+                            аномалий (просадка CTR/кликов при стабильной позиции)
 
 gsc.search_console + TopVisor ──▶ v_gsc_monthly / v_gsc_yearly — сводка по месяцам/годам
                                       для отдельной большой таблицы (не часть основной цепочки,
@@ -86,6 +97,141 @@ EXISTS (SELECT 1 FROM common.brand_keywords bk WHERE sc.request ILIKE '%' || bk.
 `position_filter`/`position_custom_min`/`position_custom_max` (та же логика, что в чарте 2).
 `project_name`/`cluster_topvisor_name`/`mode`/`brand_filter` тут не нужны — чарт по
 определению весь про бренд.
+
+## Датасет-чарт: Лонг-тейл — KPI и аномалии (v_gsc_longtail_requests)
+
+Источник — `analytics.v_gsc_longtail_requests` (одна строка = request × url, уже с current/prev
+и готовыми дельтами, брендовые запросы исключены). Что такое "лонг-тейл" и почему порог
+просадки не в SQL — см. комментарий над вью в [schema.sql](schema.sql).
+
+⚠️ **`current`/`prev` — 60/60 дней скользящих, `prev` уходит на 61-120 дней назад.**
+Ежедневный сбор GSC был нестабилен с октября 2025 по конец апреля 2026 (см. "Источник
+данных" выше) — если сегодняшняя дата такая, что 61-120 дней назад попадает в этот
+интервал, `prev`-показатели будут занижены не из-за реальной просадки, а из-за дыр
+в сборе. Если в списке аномалий внезапно резко выросло число строк сразу по многим
+непохожим друг на друга запросам одновременно — в первую очередь проверь это, не
+качество контента/выдачи.
+
+⚠️ **`is_long_tail` временно определяется только через `word_count >= 3`**, условие
+по объёму показов убрано (было: топ-10% по проекту через `PERCENTILE_CONT` — см. историю
+изменений `schema.sql`). Если список аномалий станет слишком шумным из-за запросов
+с единичными показами (маленький знаменатель CTR — один клик туда-сюда даёт "просадку"
+на пустом месте), объёмное условие возвращается, окно 60/60 менять для этого не нужно.
+
+⚠️ Один и тот же `request` может встречаться несколько раз с разными `url`, если он
+ранжируется сразу по нескольким страницам — это ожидаемо, не дубли. В таблице аномалий
+имеет смысл держать `url` рядом с `request`, иначе непонятно, к какой странице относится
+просадка.
+
+Обычный Датасет (не QL) — вся фильтрация делается стандартными Filters/Selectors по полям
+вью, никакой агрегации DataLens считать не должен (числа уже готовые, гранулярность —
+request, дублировать `SUM`/`AVG` поверх них нельзя).
+
+**Обязательный базовый фильтр на дашборде:** `is_long_tail = TRUE` — без него в датасет
+попадают все нелонг-тейл запросы тоже (вью отдаёт их для справки/сравнения, не выкидывает).
+
+**Параметры-Selector'ы для поиска аномалий** (задаются на дашборде, не в SQL):
+- `ctr_drop_threshold_pct` (Float, дефолт например `-30`) — фильтр `[dyn_ctr_pct] <= {{ctr_drop_threshold_pct}}`.
+- `clicks_drop_threshold_pct` (Float, дефолт `-30`) — фильтр `[dyn_clicks_pct] <= {{clicks_drop_threshold_pct}}`
+  (можно требовать оба условия сразу или любое одно — по вкусу, `AND`/`OR` между полями решается
+  формулой-условием на дашборде).
+- `position_stability_range` (Float, дефолт `1.5`) — фильтр `[position_delta_abs] <= {{position_stability_range}}`,
+  это и есть условие "позиции стабильные" (запрос остаётся в анomальном списке только если позиция
+  не уехала больше чем на этот разброс между current/prev).
+
+Комбинация всех трёх — собственно "аномалия": CTR и/или клики упали резче порога, а позиция
+почти не изменилась (падение объясняется не тем, что страница просела в выдаче).
+
+**Колонки датасета:** `request`, `url`, `project_name`, `cluster_topvisor_name`, `site`, `word_count`,
+`clicks_current`/`clicks_prev`/`dyn_clicks_pct`, `impressions_current`/`impressions_prev`/
+`dyn_impressions_pct`, `ctr_current`/`ctr_prev`/`dyn_ctr_pct`, `position_current`/`position_prev`/
+`position_delta_abs`.
+
+Сортировка по умолчанию для таблицы аномалий — `dyn_ctr_pct ASC` (сперва самые сильные
+просадки CTR).
+
+⚠️ `dyn_clicks_pct`/`dyn_ctr_pct`/`dyn_impressions_pct` — `NULL`, если `*_prev = 0` (новый запрос,
+не было показов в предыдущем периоде) — такие строки не аномалия, а новый лонг-тейл-запрос;
+если нужно их скрыть явно, добавь `[clicks_prev] > 0` (или аналогично по `impressions_prev`)
+в фильтр дашборда.
+
+## QL-чарт: Web Vitals (график по метрике + кластерный фильтр)
+
+Источник — `analytics.v_ga4_web_vitals_daily` (не `ga4.web_vitals` напрямую — вью уже
+резолвит `url`/`project_name`/`cluster_topvisor_name` через TopVisor). Одна точка на графике —
+день × метрика; несколько метрик разводятся легендой/цветом по `metric_name`.
+
+Параметры QL: `event_date_from`, `event_date_to` (общие фильтры даты дашборда, как и в GSC-
+чартах), `cluster_topvisor_name` (текст, пусто = без фильтра), `project_name` (текст, пусто =
+без фильтра), `url` (текст, пусто = без фильтра — точное совпадение с `common.site_map.url`,
+т.е. полная ссылка вида `https://ddos-guard.ru/blog/...`, без query/anchor/trailing slash —
+как её хранит `common.site_map`).
+
+```sql
+SELECT
+    v.event_date,
+    v.metric_name,
+    SUM(v.metric_value * v.event_count) / NULLIF(SUM(v.event_count), 0) AS avg_value,
+    SUM(v.event_count) AS events,
+    analytics.web_vitals_rating(
+        v.metric_name,
+        SUM(v.metric_value * v.event_count) / NULLIF(SUM(v.event_count), 0)
+    ) AS rating
+FROM analytics.v_ga4_web_vitals_daily v
+WHERE
+    v.event_date >= {{event_date_from}}::date
+    AND v.event_date <= {{event_date_to}}::date
+    AND ({{cluster_topvisor_name}} = '' OR v.cluster_topvisor_name = {{cluster_topvisor_name}})
+    AND ({{project_name}} = '' OR v.project_name = {{project_name}})
+    AND ({{url}} = '' OR v.url = {{url}})
+GROUP BY v.event_date, v.metric_name
+ORDER BY v.event_date
+```
+
+`avg_value` взвешен по `event_count` (`SUM(value*count)/SUM(count)`, не `AVG(value)`) — та же
+причина, что и для CTR в GSC-чартах: без веса дни с 1 визитом и дни с 500 визитами учитывались
+бы одинаково, искажая тренд.
+
+### Индикатор порогов (green/yellow/red по официальным данным Google)
+
+`rating` считается функцией `analytics.web_vitals_rating(metric_name, value)` — 3 официальных
+уровня Google (`good`/`needs_improvement`/`poor`), пороги захардкожены в самой функции ([schema.sql](schema.sql)):
+
+| Метрика | good (зелёный) | needs_improvement (жёлтый) | poor (красный) |
+|---|---|---|---|
+| LCP  | ≤ 2500 мс | 2500–4000 мс | > 4000 мс |
+| INP  | ≤ 200 мс  | 200–500 мс   | > 500 мс  |
+| CLS  | ≤ 0.1     | 0.1–0.25     | > 0.25    |
+| FCP  | ≤ 1800 мс | 1800–3000 мс | > 3000 мс |
+| TTFB | ≤ 800 мс  | 800–1800 мс  | > 1800 мс |
+
+⚠️ Пороги Google официально рассчитаны на 75-й перцентиль реальных измерений (CrUX), а не на
+среднее — у нас в `ga4.web_vitals` хранится только среднее (`metric_value`), без распределения
+по перцентилям (`metric_id` сознательно не собирается — см. описание `ga4.web_vitals` выше),
+так что `rating` тут приближение "по среднему", не полноценная методология CrUX.
+
+**Важно про гранулярность:** `rating` нужно считать **после** агрегации (`SUM(value*count)/SUM(count)`
+в самом чарте, как в примере выше), а не брать `rating` построчно из `v_ga4_web_vitals_daily` —
+там он посчитан для гранулярности день×страница и не подходит, если чарт агрегирует за более
+длинный период или сразу по нескольким страницам (нельзя усреднить/проголосовать по категориям
+`good`/`poor`, это даст неверный результат).
+
+**В DataLens:** привяжи «Раскраску» (Colors) виджета к полю `rating`, вручную задай палитру —
+`good` → зелёный, `needs_improvement` → жёлтый, `poor` → красный (кастомная палитра значений,
+не автоматическая градиентная). Для KPI-плиток (Indicator) — то же самое через условное
+форматирование по значению `rating`.
+
+Если нужен фильтр по кластеру именно как **выпадающий список** (Selector), а не свободный
+текст — источник для списка значений: `SELECT DISTINCT cluster_topvisor_name FROM
+analytics.v_ga4_web_vitals_daily WHERE cluster_topvisor_name IS NOT NULL ORDER BY 1` (аналогично
+для `project_name`/`url`).
+
+⚠️ Строки, для которых TopVisor не отслеживает URL (страница вне кластерной структуры), будут
+иметь `cluster_topvisor_name`/`project_name` = `NULL` и не пройдут фильтр по кластеру/проекту
+(это ожидаемо — сравнение `= {{cluster_topvisor_name}}` с `NULL` всегда `NULL`/false). Если
+нужно ещё и "все данные без привязки к кластеру" — добавь отдельную ветку `OR v.cluster_topvisor_name IS NULL`
+под явный параметр (например, `show_uncategorized`), как это сделано с `project_name`/
+`cluster_topvisor_name` через `IS NOT DISTINCT FROM` в `v_gsc_requests_kpi`.
 
 ## Датасет-чарт: KPI-блоки (v_gsc_requests_kpi / v_gsc_requests_kpi_brand)
 

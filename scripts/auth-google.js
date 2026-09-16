@@ -1,12 +1,23 @@
 // scripts/auth-google.js
 require('dotenv').config();
 const express = require('express');
+const readline = require('readline');
 const { OAuth2Client } = require('google-auth-library');
 const GoogleAuthManager = require('../core/GoogleAuthManager');
 const Logger = require('../core/Logger');
 const open = require('open');
 
 const logger = new Logger('google-auth-setup');
+
+function prompt(question) {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    return new Promise(resolve => {
+        rl.question(question, answer => {
+            rl.close();
+            resolve(answer);
+        });
+    });
+}
 
 async function setupGoogleAuth() {
     const client = new OAuth2Client(
