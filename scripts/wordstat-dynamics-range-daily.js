@@ -12,9 +12,9 @@
 //
 // Список фраз тот же: services/wordstat/keywords/dynamics_range_keywords.txt
 // Квота (100 запросов/час) общая с обычным сбором wordstat — top (1-2 число)
-// и dynamics (3-16 число, после добавления операторов Wordstat — см.
-// services/wordstat/README.md) уже заняты по расписанию, поэтому этот скрипт
-// стоит вешать на день, когда квота простаивает, например:
+// и dynamics (3-9 число, см. services/wordstat/README.md) уже заняты по
+// расписанию, поэтому этот скрипт стоит вешать на день, когда квота
+// простаивает, например:
 //
 //   # WordStat dynamics-range-daily — 17 число, каждый час с 8:00 до 20:00
 //   0 8-20 17 * * cd /opt/api-automation && node scripts/wordstat-dynamics-range-daily.js >> logs/services/wordstat/daily_$(date +\%Y\%m\%d).log 2>&1
