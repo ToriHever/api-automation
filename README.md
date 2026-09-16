@@ -22,8 +22,9 @@
 │   │   ├── 📄 config.json              # Конфиг сервиса
 │   │   └── 📄 schema.sql               # SQL схема для WordStat
 │   │   keywords/
-│   │     ├── dynamics_keywords.txt        # Ключи для метода dynamics
-│   │     └── top_keywords.txt             # Ключи для метода topRequests
+│   │     ├── dynamics_keywords_commercial.txt  # Ключи для метода dynamics — коммерческие темы
+│   │     ├── dynamics_keywords_content.txt     # Ключи для метода dynamics — контент/образование
+│   │     └── top_keywords.txt                  # Ключи для метода topRequests
 │   │
 │   ├── 📁 clarity/
 │   │   ├── 📄 ClarityCollector.js      # Коллектор Clarity

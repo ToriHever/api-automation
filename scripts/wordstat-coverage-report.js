@@ -1,17 +1,19 @@
 // scripts/wordstat-coverage-report.js
 // Сверка: ядро запросов (common.requests) vs TopVisor (topvisor.positions) vs
-// список ежемесячного сбора частоты Wordstat (services/wordstat/keywords/dynamics_keywords.txt).
+// список ежемесячного сбора частоты Wordstat (dynamics_keywords_commercial.txt +
+// dynamics_keywords_content.txt — те же файлы, что по умолчанию читает
+// WordStatCollector.fetchDynamics, см. WORDSTAT_KEYWORDS_FILE в README).
 //
 // Показывает:
 //   1) сколько всего запросов в ядре;
 //   2) сколько из них реально отслеживается TopVisor (по позициям за последние N дней);
-//   3) сколько сейчас идёт в ежемесячный сбор частоты Wordstat (dynamics_keywords.txt);
+//   3) сколько сейчас идёт в ежемесячный сбор частоты Wordstat (оба keyword-файла вместе);
 //   4) КАНДИДАТЫ — запросы, которые TopVisor отслеживает, но которых нет в списке Wordstat
 //      (их имеет смысл добавить для расширения покрытия по частоте);
 //   5) запросы в ядре, которые вообще нигде не отслеживаются (для информации).
 //
 // Кандидаты сохраняются в scripts/output/wordstat-candidates.txt — по одной фразе на
-// строку, готово для вставки в dynamics_keywords.txt.
+// строку, готово для вставки в dynamics_keywords_commercial.txt / _content.txt.
 //
 // Запуск: node scripts/wordstat-coverage-report.js [--days 90]
 
@@ -40,7 +42,10 @@ async function main() {
     await db.connect();
 
     try {
-        const dynamicsList = loadKeywordFile('dynamics_keywords.txt');
+        const dynamicsList = new Set([
+            ...loadKeywordFile('dynamics_keywords_commercial.txt'),
+            ...loadKeywordFile('dynamics_keywords_content.txt')
+        ]);
         const topList = loadKeywordFile('top_keywords.txt');
 
         const coreTotal = await db.query(`SELECT COUNT(*)::int AS cnt FROM common.requests`);
