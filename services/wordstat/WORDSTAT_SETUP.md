@@ -1,5 +1,12 @@
 # 🚀 WordStat Collector - Быстрый старт
 
+> ⚠️ **Устарело в части списка ключей**: ниже упоминается один файл
+> `dynamics_keywords.txt` — он больше не используется по умолчанию (только как
+> legacy/rollback). Сейчас `dynamics` читает `dynamics_keywords_commercial.txt`
+> + `dynamics_keywords_content.txt` (через запятую в `WORDSTAT_KEYWORDS_FILE`).
+> Актуальное описание — в [README.md](README.md#-структура-сервиса). Остальная
+> часть этого файла (авторизация, cron, устранение неполадок) актуальна.
+
 ## Концепция работы
 
 ### ✅ Что изменилось:
