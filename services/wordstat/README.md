@@ -153,6 +153,16 @@ retry убран — фраза уходит в `error` и получает но
 # на ~4800 фраз x 3 варианта соответствия (WORDSTAT_MATCH_TYPES);
 # смотри "Оценка объёма" ниже, если список/варианты изменятся — пересчитай окно)
 0 8-20 3-16 * * cd /opt/api-automation && node scripts/run-service.js wordstat --method dynamics >> logs/services/wordstat/daily_$(date +\%Y\%m\%d).log 2>&1
+
+# WordStat dynamics-range-daily — 17 число, каждый час с 8:00 до 20:00.
+# Отдельный скрипт (scripts/wordstat-dynamics-range-daily.js), НЕ входит в
+# WordStatCollector — своя таблица (wordstat.dynamics_range_daily), свой
+# ежемесячно обнуляемый цикл (cycle_start), свой список
+# (dynamics_range_keywords.txt, ~290 фраз). Собирает ДНЕВНУЮ (не месячную)
+# частотность за последние 60 дней (ограничение PERIOD_DAILY у API).
+# Делит ту же часовую квоту 100/ч — ОБЯЗАТЕЛЬНО не пересекать по дням с
+# dynamics выше. 290 фраз ≈ 4 часа, поэтому хватает одного дня с запасом.
+0 8-20 17 * * cd /opt/api-automation && node scripts/wordstat-dynamics-range-daily.js >> logs/services/wordstat/daily_$(date +\%Y\%m\%d).log 2>&1
 ```
 
 ### Оценка объёма (пересчитать при изменении списков/операторов)
