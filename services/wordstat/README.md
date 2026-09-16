@@ -28,8 +28,32 @@ services/wordstat/
 ├── schema.sql                 # SQL схема (таблицы, триггеры, очередь)
 ├── README.md                  # Этот файл
 └── keywords/
-    ├── dynamics_keywords.txt  # Ключи для метода dynamics
-    └── top_keywords.txt       # Ключи для метода top
+    ├── dynamics_keywords_commercial.txt  # dynamics: коммерческие темы (DDoS/хостинг/CDN/WAF/бренды)
+    ├── dynamics_keywords_content.txt     # dynamics: образовательный/контентный пул
+    ├── dynamics_keywords.txt             # legacy, коллектором по умолчанию больше не используется
+    └── top_keywords.txt                  # Ключи для метода top
+```
+
+### Почему два файла для dynamics
+
+Список для `dynamics` разделён на **коммерческий** (продукты компании — защита от
+DDoS, хостинг/VDS/DS, CDN, WAF, бренды/конкуренты, аудит защищённости) и
+**контентный** (образовательные темы для контент-планирования — OSI, TCP/UDP, DNS,
+2FA, капча, SQL-инъекции, XSS и т.п.), не привязанные к конкретному продукту.
+
+`WORDSTAT_KEYWORDS_FILE` теперь принимает список файлов через запятую (см.
+[`readKeywordsMulti`](WordStatCollector.js)), по умолчанию:
+```
+WORDSTAT_KEYWORDS_FILE=dynamics_keywords_commercial.txt,dynamics_keywords_content.txt
+```
+**Порядок важен**: очередь на период сеется один раз и обрабатывается по
+возрастанию `id`, поэтому фразы из файла, указанного первым (коммерческий),
+получают меньший `id` и гарантированно собираются в первую очередь — контентный
+«хвост» не блокирует сбор бизнес-критичных данных, даже если общий список большой.
+
+Чтобы временно собрать только один из списков — переопредели переменную:
+```bash
+WORDSTAT_KEYWORDS_FILE=dynamics_keywords_commercial.txt npm run collect:wordstat:dynamics
 ```
 
 ## 🔑 Авторизация (Yandex Cloud)

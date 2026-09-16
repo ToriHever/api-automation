@@ -239,7 +239,8 @@ class WordStatCollector extends BaseCollector {
     async fetchDynamics(startDate, endDate) {
         const { actualStartDate, actualEndDate } = this.calculatePreviousMonthPeriod();
 
-        const allKeywords = await this.readKeywords(process.env.WORDSTAT_KEYWORDS_FILE || 'dynamics_keywords.txt');
+        const keywordsFileList = process.env.WORDSTAT_KEYWORDS_FILE || 'dynamics_keywords_commercial.txt,dynamics_keywords_content.txt';
+        const allKeywords = await this.readKeywordsMulti(keywordsFileList);
         const batch = await this.getNextQueueBatch('dynamics', allKeywords, {
             periodStart: actualStartDate,
             periodEnd: actualEndDate
@@ -520,6 +521,34 @@ class WordStatCollector extends BaseCollector {
             }
         );
         return response.data;
+    }
+
+    /**
+     * Чтение ключевых слов из НЕСКОЛЬКИХ файлов, перечисленных через запятую
+     * (например "dynamics_keywords_commercial.txt,dynamics_keywords_content.txt").
+     * Порядок файлов важен: очередь (wordstat.collection_queue) сеется один раз за
+     * период и обрабатывается по возрастанию id, поэтому фразы из файла, указанного
+     * первым, гарантированно попадут в очередь с меньшим id и соберутся раньше —
+     * так коммерческий список не ждёт, пока отработает длинный контентный.
+     * Дубли между файлами убираются (порядок первого вхождения сохраняется).
+     */
+    async readKeywordsMulti(fileListStr) {
+        const filenames = fileListStr.split(',').map(f => f.trim()).filter(Boolean);
+        const seen = new Set();
+        const combined = [];
+
+        for (const filename of filenames) {
+            const keywords = await this.readKeywords(filename);
+            for (const phrase of keywords) {
+                const key = phrase.toLowerCase();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                combined.push(phrase);
+            }
+        }
+
+        this.logger.info(`Итого ${combined.length} уникальных ключевых слов из ${filenames.length} файл(ов): ${filenames.join(', ')}`);
+        return combined;
     }
 
     /**
