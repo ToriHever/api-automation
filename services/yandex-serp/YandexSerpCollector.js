@@ -52,7 +52,7 @@ class YandexSerpCollector extends BaseCollector {
         const keywords = raw
             .split('\n')
             .map(line => line.trim())
-            .filter(line => line.length > 0);
+            .filter(line => line.length > 0 && !line.startsWith('#'));
 
         const limit = this.config.maxKeywordsPerRun || 100;
         return keywords.slice(0, limit);

@@ -641,3 +641,53 @@ FROM daily
 GROUP BY project_name, cluster_topvisor_name, date_trunc('year', event_date::timestamp with time zone);
 
 COMMENT ON VIEW analytics.v_gsc_yearly IS 'Сводка по годам (вся история) для большой таблицы в DataLens. Группировка project_name/cluster_topvisor_name (TopVisor) вместо бывшего product_name (common.products дропнута). ctr сырой (0..1), как из GSC.';
+
+-- ============================================================
+-- v_serp_results — сырые данные yandex.serp_results для DataLens,
+-- БЕЗ привязки к TopVisor (сознательно — см. чат от 2026-09).
+--
+-- Два независимых фильтра для DataLens:
+--   target_url  — наш URL из common.site_map (не TopVisor). Резолвится
+--                 через target_url_id, который заполняет сам коллектор
+--                 (YandexSerpCollector.resolveTargetUrlIds), матчингом
+--                 URL из выдачи на уже известные страницы в site_map.
+--                 Тот же принцип (site_map.id -> url) уже используют
+--                 gsc.search_console.target_url и topvisor.positions.relevant_url_id —
+--                 то есть любая будущая site_map-таблица может выставить
+--                 такой же target_url и разделить этот фильтр в DataLens.
+--   group_name  — из common.requests.hub_id -> common.hubs.hub_name (хабы
+--                 вроде 'DDoS'/'Хостинг'/'VDS'/'WAF', см.
+--                 services/common/data/2026-08_categorize_requests.sql).
+--                 НЕ TopVisor-группа (topvisor.dim_groups) — специально,
+--                 чтобы не тащить сюда зависимость от TopVisor.
+--                 Матчится по точному тексту request (та же связка, что
+--                 WordStatCollector.resolveRequestIds использует для dynamics).
+--
+-- Гранулярность: одна строка = один документ в выдаче за день (как в самой
+-- yandex.serp_results). Конкуренты (is_own_domain = false) тоже попадают в
+-- выборку — у них target_url/group_name будут NULL, это ожидаемо.
+-- ============================================================
+
+CREATE OR REPLACE VIEW analytics.v_serp_results AS
+SELECT
+    s.event_date,
+    s.request,
+    s.search_type,
+    s.overall_position,
+    s.group_position,
+    s.doc_position_in_group,
+    s.domain,
+    s.url                  AS result_url,
+    s.title,
+    s.is_own_domain,
+    s.target_url_id,
+    sm.url                 AS target_url,
+    cr.request_id,
+    cr.hub_id,
+    h.hub_name              AS group_name
+FROM yandex.serp_results s
+LEFT JOIN common.site_map sm ON sm.id = s.target_url_id
+LEFT JOIN common.requests cr ON cr.request = s.request
+LEFT JOIN common.hubs h      ON h.hub_id = cr.hub_id;
+
+COMMENT ON VIEW analytics.v_serp_results IS 'yandex.serp_results + два независимых фильтра для DataLens, оба без привязки к TopVisor: target_url (через common.site_map, общий принцип с gsc.search_console/topvisor.positions) и group_name (через common.requests.hub_id -> common.hubs, НЕ topvisor.dim_groups). Гранулярность как в исходной таблице — один документ выдачи за день, конкуренты включены (target_url/group_name = NULL для чужих доменов).';

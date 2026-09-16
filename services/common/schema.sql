@@ -19,26 +19,25 @@ CREATE INDEX IF NOT EXISTS idx_request_urls_site_map
 COMMENT ON TABLE common.request_urls IS 'Связь запрос <-> URL, многие-ко-многим (один запрос может относиться к нескольким страницам)';
 
 -- ============================================================
--- common.products — ручная группировка URL для дашбордов
+-- common.products — ⚠️ УСТАРЕВШАЯ, НЕ ИСПОЛЬЗУЕТСЯ (см. ниже)
 -- ============================================================
--- Уже существует в БД, здесь только задокументирована (IF NOT EXISTS — no-op на проде).
+-- ИСПРАВЛЕНО (2026-09): предыдущая версия этого комментария (закоммичена по
+-- ошибке — таблица была найдена в незакоммиченных правках без понимания, что
+-- это) утверждала, что таблицу активно использует analytics.v_gsc_*. Это
+-- было верно только в прошлом. По факту, судя по services/analytics/schema.sql
+-- (коммит 99d5407 "analytics: убрать product_name/common.products"):
+--   таблица дропнута из v_gsc_monthly/v_gsc_yearly/v_gsc_requests_daily —
+--   содержала ДУБЛИ по url_id, искажавшие цифры. Эти view сейчас группируются
+--   через TopVisor (project_name/cluster_topvisor_name из topvisor.dim_keywords/
+--   dim_groups), не через common.products.
 --
--- Заполняется и поддерживается ВРУЧНУЮ — ни один скрипт в этом репозитории её
--- не читает и не пишет. Задаёт человекочитаемые группы URL ("продукты") для
--- фильтрации на дашбордах.
---
--- ВАЖНО: несмотря на отсутствие автоматизации, таблица активно используется —
--- на неё завязаны view в схеме analytics (сама схема analytics в этом
--- репозитории пока не описана, живёт только на сервере):
---   analytics.v_gsc_monthly        JOIN common.products p ON p.url_id = target_url
---   analytics.v_gsc_yearly         JOIN common.products p ON p.url_id = target_url
---   analytics.v_gsc_requests_daily JOIN common.products p ON p.url_id = target_url
--- (v_gsc_requests_agg / v_gsc_requests_brand / v_gsc_requests_brand_agg зависят
--- от неё косвенно, через v_gsc_requests_daily).
---
--- При миграции site_map (30.03.2026, см. old_table_mar_db/README.md) url_id в
--- этой таблице был сознательно перемаппирован вместе с остальными зависимыми
--- таблицами — то есть она признана важной, не мусор и не забытый черновик.
+-- Таблица (и, возможно, данные в ней) физически может ещё существовать в БД,
+-- но ни один текущий скрипт или view её не читает. Не использовать как
+-- источник группировки для новых чартов — если нужна группировка URL/запросов
+-- без привязки к TopVisor, смотри common.requests.hub_id -> common.hubs
+-- (хабы вроде 'DDoS'/'Хостинг'/'VDS'/'WAF' — активно поддерживаются, см.
+-- services/common/data/2026-08_categorize_requests.sql) — так сделано в
+-- analytics.v_serp_results (services/analytics/schema.sql).
 CREATE TABLE IF NOT EXISTS common.products (
     id SMALLSERIAL PRIMARY KEY,
     url_id SMALLINT NOT NULL REFERENCES common.site_map(id),
@@ -49,4 +48,4 @@ CREATE TABLE IF NOT EXISTS common.products (
 CREATE INDEX IF NOT EXISTS idx_products_url_id
     ON common.products(url_id);
 
-COMMENT ON TABLE common.products IS 'Ручная группировка URL по продуктам для фильтрации на дашбордах. Заполняется вручную, используется view в схеме analytics (v_gsc_monthly, v_gsc_yearly, v_gsc_requests_daily и производные)';
+COMMENT ON TABLE common.products IS 'УСТАРЕВШАЯ. Раньше ручная группировка URL по продуктам для v_gsc_*, дропнута из-за дублей по url_id (см. комментарий выше и services/analytics/schema.sql). Ничего в репозитории её больше не читает.';
