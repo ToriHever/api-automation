@@ -11,3 +11,4 @@ tokens/
 services/domains-meta/cookies*.json
 services/notes/.offset
 scripts/output/
+services/lemmatizer/venv/
