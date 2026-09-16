@@ -61,3 +61,79 @@ CREATE TABLE IF NOT EXISTS wordstat.collection_queue (
 
 CREATE INDEX IF NOT EXISTS idx_queue_pending
     ON wordstat.collection_queue(method, status);
+
+-- ============================================
+-- Операторы Wordstat (2026-09): 3 варианта соответствия на фразу.
+--   broad         — без операторов, как раньше (по умолчанию для строк без
+--                    match_type — обратная совместимость со старыми данными).
+--   phrase        — "фраза" (точный состав и порядок слов, формы ещё варьируются)
+--   phrase_exact  — "!слово1 !слово2" (точная фраза + фиксированная словоформа)
+-- Добавляем колонку в обе таблицы (tmp_dynamics хранит результат, collection_queue —
+-- очередь сбора) и меняем UNIQUE, чтобы под одну (request_id, month) /
+-- (method, phrase, period, check_date) помещалось 3 строки — по одной на вариант.
+--
+-- Старые UNIQUE-констрейнты ищем ДИНАМИЧЕСКИ по набору колонок (через
+-- pg_constraint/pg_attribute), а не по имени — оно сгенерировано Postgres
+-- автоматически при создании таблицы и здесь неизвестно. Безопасно
+-- перезапускать: если старый констрейнт уже снят (или его не было под
+-- этим набором колонок), блок просто ничего не найдёт и ничего не сделает.
+-- ============================================
+
+ALTER TABLE wordstat.tmp_dynamics
+    ADD COLUMN IF NOT EXISTS match_type VARCHAR(20) NOT NULL DEFAULT 'broad';
+
+COMMENT ON COLUMN wordstat.tmp_dynamics.match_type IS 'Тип соответствия Wordstat: broad (без операторов), phrase ("фраза"), phrase_exact ("!слово1 !слово2" — точная фраза + словоформа).';
+
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT con.conname
+        FROM pg_constraint con
+        WHERE con.conrelid = 'wordstat.tmp_dynamics'::regclass
+          AND con.contype = 'u'
+          AND (
+              SELECT array_agg(pa.attname ORDER BY pa.attname)
+              FROM unnest(con.conkey) AS ck(attnum)
+              JOIN pg_attribute pa
+                ON pa.attrelid = con.conrelid AND pa.attnum = ck.attnum
+          ) = ARRAY['month', 'request_id']
+    LOOP
+        EXECUTE format('ALTER TABLE wordstat.tmp_dynamics DROP CONSTRAINT %I', r.conname);
+    END LOOP;
+END $$;
+
+ALTER TABLE wordstat.tmp_dynamics DROP CONSTRAINT IF EXISTS tmp_dynamics_request_month_match_key;
+ALTER TABLE wordstat.tmp_dynamics
+    ADD CONSTRAINT tmp_dynamics_request_month_match_key UNIQUE (request_id, month, match_type);
+
+ALTER TABLE wordstat.collection_queue
+    ADD COLUMN IF NOT EXISTS match_type VARCHAR(20) NOT NULL DEFAULT 'broad';
+
+COMMENT ON COLUMN wordstat.collection_queue.match_type IS 'Тот же смысл, что и wordstat.tmp_dynamics.match_type. Для method=top всегда broad (у top операторы не применяются).';
+
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT con.conname
+        FROM pg_constraint con
+        WHERE con.conrelid = 'wordstat.collection_queue'::regclass
+          AND con.contype = 'u'
+          AND (
+              SELECT array_agg(pa.attname ORDER BY pa.attname)
+              FROM unnest(con.conkey) AS ck(attnum)
+              JOIN pg_attribute pa
+                ON pa.attrelid = con.conrelid AND pa.attnum = ck.attnum
+          ) = ARRAY['check_date', 'method', 'period_end', 'period_start', 'phrase']
+    LOOP
+        EXECUTE format('ALTER TABLE wordstat.collection_queue DROP CONSTRAINT %I', r.conname);
+    END LOOP;
+END $$;
+
+ALTER TABLE wordstat.collection_queue DROP CONSTRAINT IF EXISTS collection_queue_unique_with_match_type;
+ALTER TABLE wordstat.collection_queue
+    ADD CONSTRAINT collection_queue_unique_with_match_type
+    UNIQUE (method, phrase, period_start, period_end, check_date, match_type);

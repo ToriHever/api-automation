@@ -11,6 +11,12 @@ class WordStatCollector extends BaseCollector {
         this.batchSize = 10;
         this.method = process.env.WORDSTAT_METHOD || 'all';
         this.maxRequestsPerRun = parseInt(process.env.WORDSTAT_MAX_PER_RUN || '80', 10);
+        // 3 варианта соответствия на фразу для dynamics: broad (без операторов),
+        // phrase ("фраза"), phrase_exact ("!слово1 !слово2"). Переопределяется
+        // через WORDSTAT_MATCH_TYPES (через запятую), например только "broad"
+        // для отката к старому поведению без операторов.
+        this.dynamicsMatchTypes = (process.env.WORDSTAT_MATCH_TYPES || 'broad,phrase,phrase_exact')
+            .split(',').map(s => s.trim()).filter(Boolean);
 
         if (!this.apiKey || !this.folderId) {
             throw new Error('WORDSTAT_API_KEY и WORDSTAT_FOLDER_ID обязательны');
@@ -104,9 +110,9 @@ class WordStatCollector extends BaseCollector {
                 return result.rows.length > 0;
             } else {
                 const result = await this.dbManager.query(
-                    `SELECT 1 FROM wordstat.tmp_dynamics 
-                     WHERE request_id = $1 AND month = $2`,
-                    [record.request_id, record.month]
+                    `SELECT 1 FROM wordstat.tmp_dynamics
+                     WHERE request_id = $1 AND month = $2 AND match_type = $3`,
+                    [record.request_id, record.month, record.match_type]
                 );
                 return result.rows.length > 0;
             }
@@ -126,10 +132,10 @@ class WordStatCollector extends BaseCollector {
             );
         } else {
             await this.dbManager.query(
-                `INSERT INTO wordstat.tmp_dynamics 
-                    (request_id, group_id, month, frequency)
-                 VALUES ($1, $2, $3, $4)`,
-                [record.request_id, record.group_id, record.month, record.frequency]
+                `INSERT INTO wordstat.tmp_dynamics
+                    (request_id, group_id, month, frequency, match_type)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [record.request_id, record.group_id, record.month, record.frequency, record.match_type]
             );
         }
     }
@@ -146,15 +152,24 @@ class WordStatCollector extends BaseCollector {
             );
         } else {
             await this.dbManager.query(
-                `UPDATE wordstat.tmp_dynamics 
+                `UPDATE wordstat.tmp_dynamics
                  SET frequency = $3, group_id = $4, updated_at = CURRENT_TIMESTAMP
-                 WHERE request_id = $1 AND month = $2`,
-                [record.request_id, record.month, record.frequency, record.group_id]
+                 WHERE request_id = $1 AND month = $2 AND match_type = $5`,
+                [record.request_id, record.month, record.frequency, record.group_id, record.match_type]
             );
         }
     }
 
-    async getNextQueueBatch(method, allKeywords, periodKey) {
+    /**
+     * matchTypes — варианты соответствия, которые нужно завести в очереди
+     * для каждой фразы (['broad'] для top; ['broad','phrase','phrase_exact']
+     * для dynamics по умолчанию). Порядок вложенности сидирования — фраза
+     * снаружи, matchType внутри — чтобы у топ-приоритетных (коммерческих)
+     * фраз все 3 варианта собрались раньше, чем дойдёт очередь до
+     * низкоприоритетных фраз в принципе (см. порядок файлов в
+     * readKeywordsMulti).
+     */
+    async getNextQueueBatch(method, allKeywords, periodKey, matchTypes = ['broad']) {
         const limit = this.maxRequestsPerRun;
         const isDynamics = method === 'dynamics';
 
@@ -167,29 +182,31 @@ class WordStatCollector extends BaseCollector {
         );
 
         if (existing.rows[0].cnt === 0) {
-            this.logger.info(`Очередь для ${method} (${keyValue}) не создана — добавляю ${allKeywords.length} фраз`);
+            this.logger.info(`Очередь для ${method} (${keyValue}) не создана — добавляю ${allKeywords.length} фраз x ${matchTypes.length} вариант(а/ов) = ${allKeywords.length * matchTypes.length}`);
 
             for (const phrase of allKeywords) {
-                if (isDynamics) {
-                    await this.dbManager.query(
-                        `INSERT INTO wordstat.collection_queue (method, phrase, period_start, period_end)
-                     VALUES ($1, $2, $3, $4)
-                     ON CONFLICT (method, phrase, period_start, period_end, check_date) DO NOTHING`,
-                        [method, phrase, periodKey.periodStart, periodKey.periodEnd]
-                    );
-                } else {
-                    await this.dbManager.query(
-                        `INSERT INTO wordstat.collection_queue (method, phrase, check_date)
-                     VALUES ($1, $2, $3)
-                     ON CONFLICT (method, phrase, period_start, period_end, check_date) DO NOTHING`,
-                        [method, phrase, periodKey.checkDate]
-                    );
+                for (const matchType of matchTypes) {
+                    if (isDynamics) {
+                        await this.dbManager.query(
+                            `INSERT INTO wordstat.collection_queue (method, phrase, period_start, period_end, match_type)
+                         VALUES ($1, $2, $3, $4, $5)
+                         ON CONFLICT (method, phrase, period_start, period_end, check_date, match_type) DO NOTHING`,
+                            [method, phrase, periodKey.periodStart, periodKey.periodEnd, matchType]
+                        );
+                    } else {
+                        await this.dbManager.query(
+                            `INSERT INTO wordstat.collection_queue (method, phrase, check_date, match_type)
+                         VALUES ($1, $2, $3, $4)
+                         ON CONFLICT (method, phrase, period_start, period_end, check_date, match_type) DO NOTHING`,
+                            [method, phrase, periodKey.checkDate, matchType]
+                        );
+                    }
                 }
             }
         }
 
         const pending = await this.dbManager.query(
-            `SELECT id, phrase FROM wordstat.collection_queue
+            `SELECT id, phrase, match_type FROM wordstat.collection_queue
          WHERE method = $1 AND ${whereExtra} AND status IN ('pending', 'error') AND attempts < 5
          ORDER BY attempts ASC, id ASC
          LIMIT $3`,
@@ -229,7 +246,7 @@ class WordStatCollector extends BaseCollector {
         if (record._type === 'top') {
             return `top|${record.base_phrase_id}|${record.related_phrase_id}|${record.check_date}`;
         }
-        return `dynamics|${record.request_id}|${record.month}`;
+        return `dynamics|${record.request_id}|${record.month}|${record.match_type}`;
     }
 
     // ============================================================
@@ -244,7 +261,7 @@ class WordStatCollector extends BaseCollector {
         const batch = await this.getNextQueueBatch('dynamics', allKeywords, {
             periodStart: actualStartDate,
             periodEnd: actualEndDate
-        });
+        }, this.dynamicsMatchTypes);
 
         if (batch.length === 0) {
             this.logger.info('Очередь dynamics пуста для этого запуска');
@@ -253,15 +270,17 @@ class WordStatCollector extends BaseCollector {
 
         const records = [];
         for (let i = 0; i < batch.length; i++) {
-            const { id: queueId, phrase } = batch[i];
-            const result = await this.getDynamics(phrase, actualStartDate, actualEndDate, i + 1, batch.length);
+            const { id: queueId, phrase, match_type: matchType } = batch[i];
+            const queryText = this.buildWordstatQuery(phrase, matchType);
+            const result = await this.getDynamics(queryText, actualStartDate, actualEndDate, i + 1, batch.length);
 
             if (result.success) {
                 await this.markQueueResult(queueId, true);
                 Object.keys(result.monthlyData).forEach(monthDate => {
                     records.push({
                         _type: 'dynamics',
-                        phrase: result.phrase,
+                        phrase, // ОРИГИНАЛЬНАЯ фраза без операторов — для резолва common.requests
+                        match_type: matchType,
                         month: monthDate,
                         frequency: result.monthlyData[monthDate]
                     });
@@ -274,6 +293,23 @@ class WordStatCollector extends BaseCollector {
         }
 
         return records;
+    }
+
+    /**
+     * Строит реальную строку запроса к Wordstat API из оригинальной фразы
+     * и типа соответствия. phrase в записях/БД всегда остаётся оригинальным
+     * (без операторов) — операторы добавляются только в строку, которая
+     * реально уходит в API.
+     */
+    buildWordstatQuery(phrase, matchType) {
+        if (matchType === 'phrase') {
+            return `"${phrase}"`;
+        }
+        if (matchType === 'phrase_exact') {
+            const exactWords = phrase.split(/\s+/).filter(Boolean).map(w => `!${w}`).join(' ');
+            return `"${exactWords}"`;
+        }
+        return phrase; // 'broad'
     }
 
     async getDynamics(phrase, fromDate, toDate, index, total) {
@@ -349,6 +385,7 @@ class WordStatCollector extends BaseCollector {
             request_id: resolved.request_id,
             group_id: resolved.group_id,
             phrase: record.phrase,
+            match_type: record.match_type,
             month: record.month,
             frequency: record.frequency
         };
