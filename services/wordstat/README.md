@@ -122,9 +122,21 @@ retry убран — фраза уходит в `error` и получает но
 # WordStat top — с 1 по 2 число, каждый час с 8:00 до 20:00
 0 8-20 1-2 * * cd /opt/api-automation && node scripts/run-service.js wordstat --method top >> logs/services/wordstat/daily_$(date +\%Y\%m\%d).log 2>&1
 
-# WordStat dynamics — с 3 по 5 число, каждый час с 8:00 до 20:00
-0 8-20 3-5 * * cd /opt/api-automation && node scripts/run-service.js wordstat --method dynamics >> logs/services/wordstat/daily_$(date +\%Y\%m\%d).log 2>&1
+# WordStat dynamics — с 3 по 9 число, каждый час с 8:00 до 20:00
+# (7 дней x 13 слотов = 91 час/мес — с запасом под ~51 час, реально нужный
+# на dynamics_keywords_commercial.txt + dynamics_keywords_content.txt, ~4800 фраз;
+# смотри "Оценка объёма" ниже, если список изменится — пересчитай окно)
+0 8-20 3-9 * * cd /opt/api-automation && node scripts/run-service.js wordstat --method dynamics >> logs/services/wordstat/daily_$(date +\%Y\%m\%d).log 2>&1
 ```
+
+### Оценка объёма (пересчитать при изменении списков)
+
+```
+(строк в dynamics_keywords_commercial.txt + dynamics_keywords_content.txt) / 95 = часов на полный месячный сбор
+часов / 13 (слотов в день при 8:00-20:00) = минимум дней окна cron
+```
+
+При текущих ~4800 фразах это ~51 час ≈ 4 дня минимум, окно 3–9 (7 дней) — с запасом.
 
 ## 🚀 Запуск вручную
 
