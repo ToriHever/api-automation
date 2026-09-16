@@ -56,6 +56,32 @@ WORDSTAT_KEYWORDS_FILE=dynamics_keywords_commercial.txt,dynamics_keywords_conten
 WORDSTAT_KEYWORDS_FILE=dynamics_keywords_commercial.txt npm run collect:wordstat:dynamics
 ```
 
+### Операторы Wordstat (2026-09): 3 варианта соответствия на фразу
+
+Для `dynamics` каждая фраза теперь собирается в **трёх вариантах** (три строки в
+`wordstat.tmp_dynamics` на фразу/месяц, различаются колонкой `match_type`):
+
+| `match_type` | Реальный запрос к API | Смысл |
+|---|---|---|
+| `broad` | `фраза` (как раньше) | Широкое соответствие — формы слов, порядок, +1 слово вокруг |
+| `phrase` | `"фраза"` | Точный состав и порядок слов, формы ещё варьируются |
+| `phrase_exact` | `"!слово1 !слово2"` | Точная фраза + фиксированная словоформа (самая узкая частотность) |
+
+Строит реальную строку [`buildWordstatQuery`](WordStatCollector.js) — в БД
+(`phrase` в `tmp_dynamics`/`collection_queue`) всегда лежит **оригинальная**
+фраза без операторов (нужна для резолва `common.requests` по точному тексту),
+операторы добавляются только в строку, которая реально уходит в API.
+
+Управляется `WORDSTAT_MATCH_TYPES` (через запятую), по умолчанию
+`broad,phrase,phrase_exact`. Чтобы откатиться к старому поведению (только
+широкое соответствие, без операторов):
+```bash
+WORDSTAT_MATCH_TYPES=broad npm run collect:wordstat:dynamics
+```
+
+⚠️ **Это утраивает объём запросов** (и стоимость, и требуемую квоту) для
+`dynamics` — см. пересчитанные "Оценка объёма" и cron-окно ниже.
+
 ## 🔑 Авторизация (Yandex Cloud)
 
 API работает через сервисный аккаунт Yandex Cloud с ролью `search-api.webSearch.user`
@@ -122,21 +148,26 @@ retry убран — фраза уходит в `error` и получает но
 # WordStat top — с 1 по 2 число, каждый час с 8:00 до 20:00
 0 8-20 1-2 * * cd /opt/api-automation && node scripts/run-service.js wordstat --method top >> logs/services/wordstat/daily_$(date +\%Y\%m\%d).log 2>&1
 
-# WordStat dynamics — с 3 по 9 число, каждый час с 8:00 до 20:00
-# (7 дней x 13 слотов = 91 час/мес — с запасом под ~51 час, реально нужный
-# на dynamics_keywords_commercial.txt + dynamics_keywords_content.txt, ~4800 фраз;
-# смотри "Оценка объёма" ниже, если список изменится — пересчитай окно)
-0 8-20 3-9 * * cd /opt/api-automation && node scripts/run-service.js wordstat --method dynamics >> logs/services/wordstat/daily_$(date +\%Y\%m\%d).log 2>&1
+# WordStat dynamics — с 3 по 16 число, каждый час с 8:00 до 20:00
+# (14 дней x 13 слотов = 182 часа/мес — с запасом под ~151 час, реально нужный
+# на ~4800 фраз x 3 варианта соответствия (WORDSTAT_MATCH_TYPES);
+# смотри "Оценка объёма" ниже, если список/варианты изменятся — пересчитай окно)
+0 8-20 3-16 * * cd /opt/api-automation && node scripts/run-service.js wordstat --method dynamics >> logs/services/wordstat/daily_$(date +\%Y\%m\%d).log 2>&1
 ```
 
-### Оценка объёма (пересчитать при изменении списков)
+### Оценка объёма (пересчитать при изменении списков/операторов)
 
 ```
-(строк в dynamics_keywords_commercial.txt + dynamics_keywords_content.txt) / 95 = часов на полный месячный сбор
+(строк в dynamics_keywords_commercial.txt + dynamics_keywords_content.txt)
+  x (число вариантов в WORDSTAT_MATCH_TYPES, по умолчанию 3)
+  / 95 = часов на полный месячный сбор
 часов / 13 (слотов в день при 8:00-20:00) = минимум дней окна cron
 ```
 
-При текущих ~4800 фразах это ~51 час ≈ 4 дня минимум, окно 3–9 (7 дней) — с запасом.
+При текущих ~4800 фразах x 3 варианта — это ~14 400 запросов ≈ 151 час ≈
+12 дней минимум, окно 3–16 (14 дней) — с запасом на повторные попытки.
+Если откатиться на `WORDSTAT_MATCH_TYPES=broad` (без операторов) — расчёт
+и окно возвращаются к прежним ~51 часу / 4 дням.
 
 ## 🚀 Запуск вручную
 
