@@ -13,6 +13,7 @@ async function getCollector(serviceName) {
         'gsc': () => require('../services/gsc/GSCCollector'),
         'yandex-metrika': () => require('../services/yandex-metrika/YandexMetrikaCollector'),
         'yandex-serp': () => require('../services/yandex-serp/YandexSerpCollector'),
+        'google-alerts': () => require('../services/google-alerts/GoogleAlertsCollector'),
         'domains-meta': () => require('../services/domains-meta/DomainsMetaCollector'),
         'checkhost': () => require('../services/checkhost/CheckHostCollector')
     };
