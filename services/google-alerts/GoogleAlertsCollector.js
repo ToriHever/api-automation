@@ -157,7 +157,9 @@ class GoogleAlertsCollector extends BaseCollector {
     async insertNote(record) {
         try {
             const categoryId = await this.resolveNotesCategoryId();
-            const title = record.title || `${record.alertName}: ${record.domain}`;
+            // alertName всегда виден в заголовке — раньше он проявлялся только
+            // когда у RSS-элемента не было своего title (то есть почти никогда).
+            const title = `[${record.alertName}] ${record.title || record.domain}`;
             const description = record.snippet
                 ? `${record.snippet}\n\n${record.url}`
                 : record.url;
