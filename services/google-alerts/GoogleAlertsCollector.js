@@ -159,7 +159,9 @@ class GoogleAlertsCollector extends BaseCollector {
             const categoryId = await this.resolveNotesCategoryId();
             // alertName всегда виден в заголовке — раньше он проявлялся только
             // когда у RSS-элемента не было своего title (то есть почти никогда).
-            const title = `[${record.alertName}] ${record.title || record.domain}`;
+            // Разделитель — тире, не квадратные скобки: те в DataLens зарезервированы
+            // под ссылки на поля в формулах ([ИмяПоля]), риск не стоил того.
+            const title = `${record.alertName} — ${record.title || record.domain}`;
             const description = record.snippet
                 ? `${record.snippet}\n\n${record.url}`
                 : record.url;
