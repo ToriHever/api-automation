@@ -67,6 +67,14 @@
     "description": "Yandex Search API — полная выдача (ТОП-N) по фиксированному списку запросов (services/yandex-serp/keywords/target_keywords.txt). Платный метод — ~0.485 ₽/запрос по прайсу (грант, покрывавший его, закончился 2026-09-02, см. чат). Данные берутся за текущий день. Раз в неделю (не ежедневно — дороже Wordstat в ~24 раза за запрос), поэтому отдельная еженедельная cron-строка (см. services/yandex-serp/README.md), НЕ общий утренний батч enabled:true.",
     "env_prefix": "YANDEX_SEARCH_"
   },
+  "google-alerts": {
+    "enabled": false,
+    "schedule": "0 * * * *",
+    "timeout": 120000,
+    "retries": 2,
+    "description": "Google Alerts (RSS) → common.google_alerts (сырые упоминания) + common.notes (лента событий Telegram-бота, категория 'Google Alerts'). Бесплатно (публичные RSS-фиды), почасовой сбор. Требует GOOGLE_ALERTS_FEEDS в .env (алерты создаются на google.com/alerts с доставкой 'RSS-канал'). Своя cron-строка, см. services/google-alerts/README.md.",
+    "env_prefix": "GOOGLE_ALERTS_"
+  },
   "domains-meta": {
     "enabled": false,
     "priority": 8,

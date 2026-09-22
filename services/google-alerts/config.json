@@ -1,0 +1,5 @@
+{
+  "name": "Google Alerts",
+  "description": "Мониторинг упоминаний через RSS-фиды Google Alerts",
+  "timezone": "Europe/Moscow"
+}

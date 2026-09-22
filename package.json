@@ -15,6 +15,7 @@
     "collect:gsc": "node scripts/run-service.js gsc",
     "collect:yandex-metrika": "node scripts/run-service.js yandex-metrika",
     "collect:yandex-serp": "node scripts/run-service.js yandex-serp",
+    "collect:google-alerts": "node scripts/run-service.js google-alerts",
     "collect:domains-meta": "node scripts/run-service.js domains-meta",
     "collect:checkhost": "node scripts/run-service.js checkhost",
     "notes-bot": "node scripts/notes-bot.js",
@@ -57,6 +58,7 @@
     "node-cron": "^3.0.2",
     "pg": "^8.11.0",
     "puppeteer": "^24.43.1",
+    "rss-parser": "^3.13.0",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^4.7.1"
   },
