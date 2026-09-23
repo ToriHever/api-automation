@@ -6,6 +6,7 @@
 
 require('dotenv').config();
 const axios = require('axios');
+const iconv = require('iconv-lite');
 const fs = require('fs');
 const path = require('path');
 const DatabaseManager = require('../core/DatabaseManager');
@@ -122,6 +123,53 @@ async function upsertKeywords(db, keywords) {
     }
 }
 
+async function getSearchersRegionsExport(projectId) {
+    const response = await axios.post(
+        `${API_BASE}/get/positions_2/searchers_regions/export`,
+        { project_id: projectId },
+        {
+            headers: authHeaders(),
+            timeout: 30000,
+            responseType: 'arraybuffer' // ответ — CSV в Windows-1251, не JSON
+        }
+    );
+
+    const text = iconv.decode(Buffer.from(response.data), 'win1251');
+
+    return text
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => {
+            const [searcherKey, regionName, countryCode, lang, device, depth] = line.split(';');
+            return {
+                searcherId: parseInt(searcherKey, 10),
+                regionName: regionName || null,
+                countryCode: countryCode || null,
+                lang: lang || null,
+                device: device !== undefined && device !== '' ? parseInt(device, 10) : null,
+                depth: depth !== undefined && depth !== '' ? parseInt(depth, 10) : null
+            };
+        })
+        .filter(r => Number.isInteger(r.searcherId));
+}
+
+async function upsertProjectRegions(db, projectId, regions) {
+    for (const r of regions) {
+        await db.query(
+            `INSERT INTO topvisor.dim_project_regions
+                (project_id, searcher_id, region_name, country_code, lang, device, depth)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (project_id, searcher_id, region_name, device) DO UPDATE SET
+                country_code = EXCLUDED.country_code,
+                lang = EXCLUDED.lang,
+                depth = EXCLUDED.depth,
+                updated_at = CURRENT_TIMESTAMP`,
+            [projectId, r.searcherId, r.regionName, r.countryCode, r.lang, r.device, r.depth]
+        );
+    }
+}
+
 async function main() {
     if (!process.env.TOPVISOR_API_KEY || !process.env.TOPVISOR_USER_ID) {
         throw new Error('TOPVISOR_API_KEY и TOPVISOR_USER_ID обязательны');
@@ -153,6 +201,15 @@ async function main() {
             const keywords = await getKeywords(projectId);
             console.log(`  Ключевых фраз: ${keywords.length}`);
             await upsertKeywords(db, keywords);
+
+            await delay(500);
+            try {
+                const regions = await getSearchersRegionsExport(projectId);
+                console.log(`  Поисковик+регион: ${regions.length}`);
+                await upsertProjectRegions(db, projectId, regions);
+            } catch (error) {
+                console.error(`  Ошибка синка регионов/поисковиков: ${error.message}`);
+            }
         }
 
         console.log('\nГотово.');
