@@ -249,7 +249,14 @@ COMMENT ON VIEW analytics.topvisor_group_kpi_period IS 'Все 4 метрики 
 -- не трогай напрямую gsc.search_console в новых вью, наследуйся отсюда.
 -- ============================================================
 
-CREATE OR REPLACE VIEW analytics.v_gsc_requests_daily AS
+-- CREATE OR REPLACE VIEW не может сменить тип колонки (тут project_name
+-- раньше был из common.dim_projects_engines — varchar(100), теперь из
+-- topvisor.dim_projects.name — text). Дропаем с CASCADE и пересоздаём;
+-- все зависимые view (v_gsc_requests_agg и т.д.) пересоздаются following
+-- ниже по этому же файлу, порядок в файле это учитывает.
+DROP VIEW IF EXISTS analytics.v_gsc_requests_daily CASCADE;
+
+CREATE VIEW analytics.v_gsc_requests_daily AS
 WITH keyword_cluster_map AS (
     -- Атрибуция по ТЕКСТУ запроса (k.name = sc.request), не по target/URL.
     -- target — отдельное понятие (целевая страница для проверки релевантности),
