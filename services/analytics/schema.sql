@@ -320,6 +320,20 @@ CREATE VIEW analytics.v_gsc_requests_daily AS
 WITH keyword_cluster_map AS (
     SELECT request, cluster_topvisor_name, project_name
     FROM analytics.v_topvisor_keyword_cluster_map
+),
+-- URL/target — приоритетный сигнал (страница физически привязана к проекту,
+-- однозначно), текст — фолбэк только для страниц без известного target.
+-- Порядок важен: если сначала текст — общие фразы (например "anti ddos",
+-- заведённая в одном проекте) перетягивают на себя трафик СОВСЕМ ДРУГОЙ
+-- страницы другого проекта, где эта же фраза реально ищется (нашли на
+-- примере главной ddos-guard.ru, терявшей клики в пользу ddos-guard.net
+-- Homepage — см. историю 2026-09-28, "Вариант B", после первой версии
+-- с обратным порядком COALESCE).
+url_cluster_map AS (
+    SELECT DISTINCT ON (url_norm)
+        url_norm, project_name, cluster_topvisor_name
+    FROM analytics.v_topvisor_group_target_urls
+    ORDER BY url_norm
 )
 SELECT
     sc.event_date,
@@ -328,8 +342,8 @@ SELECT
     sc.impressions,
     round(sc.ctr::numeric * 100::numeric, 2) AS ctr,
     round(sc."position"::numeric, 2) AS "position",
-    kcm.project_name,
-    kcm.cluster_topvisor_name,
+    COALESCE(ucm.project_name, kcm.project_name) AS project_name,
+    COALESCE(ucm.cluster_topvisor_name, kcm.cluster_topvisor_name) AS cluster_topvisor_name,
     (kcm.request IS NOT NULL) AS is_cluster_keyword,
     EXISTS (
         SELECT 1 FROM common.brand_keywords bk
@@ -343,9 +357,10 @@ SELECT
     sm.url
 FROM gsc.search_console sc
 JOIN common.site_map sm ON sm.id = sc.target_url
-LEFT JOIN keyword_cluster_map kcm ON kcm.request = sc.request;
+LEFT JOIN keyword_cluster_map kcm ON kcm.request = sc.request
+LEFT JOIN url_cluster_map ucm ON ucm.url_norm = rtrim(lower(sm.url), '/');
 
-COMMENT ON VIEW analytics.v_gsc_requests_daily IS 'Базовая вью по gsc.search_console (без ограничения по периоду — фильтруйте event_date снаружи, индексы на event_date есть), обогащённая project_name/cluster_topvisor_name (через topvisor.dim_keywords/dim_groups, атрибуция по тексту запроса, НЕ по target/URL — см. комментарий у keyword_cluster_map), is_cluster_keyword, is_brand (common.brand_keywords), site (RU/EN по домену) и url (сырой common.site_map.url — один request может ранжироваться по нескольким url, url добавлен последней колонкой из-за ограничения CREATE OR REPLACE VIEW на порядок полей). Источник для всех остальных v_gsc_requests_* и для DataLens-чартов вместо копипасты CTE cluster_keywords/target_urls. Для проверки релевантности (target vs фактический url ранжирования) используйте topvisor.dim_keywords.target напрямую, не эту вью.';
+COMMENT ON VIEW analytics.v_gsc_requests_daily IS 'Базовая вью по gsc.search_console (без ограничения по периоду — фильтруйте event_date снаружи, индексы на event_date есть). project_name/cluster_topvisor_name — COALESCE: сначала target-URL страницы (url_cluster_map, приоритет — однозначная физическая привязка), фолбэк на текст запроса (keyword_cluster_map) только когда URL не среди известных target. Обратный порядок ломает данные — общая фраза, отслеживаемая в одном проекте, перетягивает трафик чужой страницы другого проекта (см. комментарий у url_cluster_map). is_cluster_keyword остаётся строго текстовым — "заведена ли именно эта фраза как ключевая", отдельное понятие от атрибуции проекта/группы. is_brand (common.brand_keywords), site (RU/EN по домену), url (сырой common.site_map.url — один request может ранжироваться по нескольким url, добавлен последней колонкой из-за ограничения CREATE OR REPLACE VIEW на порядок полей). Источник для всех остальных v_gsc_requests_* и для DataLens-чартов вместо копипасты CTE cluster_keywords/target_urls. Для проверки релевантности (target vs фактический url ранжирования) используйте topvisor.dim_keywords.target напрямую, не эту вью.';
 
 -- ============================================================
 -- v_gsc_requests_agg — current/prev (30 дней скользящих) на уровне request,
