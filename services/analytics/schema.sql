@@ -242,6 +242,66 @@ COMMENT ON VIEW analytics.topvisor_group_kpi_period IS 'Все 4 метрики 
 -- ============================================================
 
 -- ============================================================
+-- v_topvisor_keyword_cluster_map / v_topvisor_group_target_urls —
+-- переиспользуемые "параметризуемые" вью (параметризация снаружи, через
+-- WHERE — обычные Postgres VIEW параметров не принимают). Раньше эта логика
+-- дублировалась как CTE в v_gsc_requests_daily и по отдельности в каждом
+-- QL-чарте DataLens; теперь один источник для обоих.
+--
+-- Использование в QL-чарте DataLens:
+--   WITH keyword_cluster_map AS (
+--       SELECT request FROM analytics.v_topvisor_keyword_cluster_map
+--       WHERE project_name = {{project_name}} AND cluster_topvisor_name = {{cluster_topvisor_name}}
+--   ),
+--   group_urls AS (
+--       SELECT url_norm FROM analytics.v_topvisor_group_target_urls
+--       WHERE project_name = {{project_name}} AND cluster_topvisor_name = {{cluster_topvisor_name}}
+--   )
+--   -- дальше JOIN gsc.search_console как обычно
+-- ============================================================
+
+-- Атрибуция по ТЕКСТУ запроса (k.name = sc.request), не по target/URL.
+-- target — отдельное понятие (целевая страница для проверки релевантности),
+-- не "отслеживается ли фраза в Топвизоре" — раньше это было перепутано,
+-- из-за чего группы без проставленного target (например dCAPTCHA) не
+-- показывали данные вообще, хотя реальные клики/показы были.
+-- Project по URL/домену определить нельзя: у ddos-guard.ru, "Блог DDoS-Guard"
+-- и "Термины DDoS-Guard" в Топвизоре один и тот же корневой url (все три —
+-- разделы одного сайта, разные объекты отслеживания). DISTINCT ON (k.name)
+-- страхует на случай, если один и тот же текст фразы вдруг заведён в
+-- нескольких проектах — берём первый по id проекта (редкий крайний случай).
+CREATE OR REPLACE VIEW analytics.v_topvisor_keyword_cluster_map AS
+SELECT DISTINCT ON (k.name)
+    k.name AS request,
+    g.name AS cluster_topvisor_name,
+    tp.name AS project_name
+FROM topvisor.dim_keywords k
+JOIN topvisor.dim_groups g ON g.id = k.group_id
+JOIN topvisor.dim_projects tp ON tp.id = k.project_id
+ORDER BY k.name, tp.id;
+
+COMMENT ON VIEW analytics.v_topvisor_keyword_cluster_map IS 'Проект/группа для запроса по ТЕКСТУ фразы (k.name = sc.request), не по target/URL. Источник для v_gsc_requests_daily и напрямую для QL-чартов (mode=keywords_only). DISTINCT ON (k.name) — см. комментарий выше в файле.';
+
+-- Страницы, явно назначенные группе через target (для mode='all' в QL-чартах —
+-- "все запросы, реально попадавшие на страницу группы", не только трекаемые).
+-- Пусто для группы = в Topvisor не проставлен target ни у одной фразы, а НЕ
+-- "давай угадаем по каким-то другим совпадениям" — угадывание по тексту здесь
+-- сознательно не делается: общие фразы (типа "капча") могут ранжироваться сразу
+-- на нескольких непричастных страницах (блог-статья про капчу vs страница
+-- продукта dCAPTCHA), см. историю 2026-09-28.
+CREATE OR REPLACE VIEW analytics.v_topvisor_group_target_urls AS
+SELECT DISTINCT
+    tp.name AS project_name,
+    g.name AS cluster_topvisor_name,
+    rtrim(lower(k.target), '/') AS url_norm
+FROM topvisor.dim_keywords k
+JOIN topvisor.dim_groups g ON g.id = k.group_id
+JOIN topvisor.dim_projects tp ON tp.id = k.project_id
+WHERE k.target IS NOT NULL;
+
+COMMENT ON VIEW analytics.v_topvisor_group_target_urls IS 'URL, явно назначенные группе через topvisor.dim_keywords.target. Пусто для группы = target не проставлен в Topvisor — это сигнал завести его там, не повод угадывать URL по совпадению текста запроса.';
+
+-- ============================================================
 -- v_gsc_requests_daily — базовая вью по данным GSC (gsc.search_console),
 -- обогащённая связкой с TopVisor-структурой и брендовой/доменной разметкой.
 -- Гранулярность: одна строка = день × запрос × страница.
@@ -258,24 +318,8 @@ DROP VIEW IF EXISTS analytics.v_gsc_requests_daily CASCADE;
 
 CREATE VIEW analytics.v_gsc_requests_daily AS
 WITH keyword_cluster_map AS (
-    -- Атрибуция по ТЕКСТУ запроса (k.name = sc.request), не по target/URL.
-    -- target — отдельное понятие (целевая страница для проверки релевантности),
-    -- не "отслеживается ли фраза в Топвизоре" — раньше это было перепутано,
-    -- из-за чего группы без проставленного target (например dCAPTCHA) не
-    -- показывали данные вообще, хотя реальные клики/показы были.
-    -- Project по URL/домену определить нельзя: у ddos-guard.ru, "Блог DDoS-Guard"
-    -- и "Термины DDoS-Guard" в Топвизоре один и тот же корневой url (все три —
-    -- разделы одного сайта, разные объекты отслеживания). DISTINCT ON (k.name)
-    -- страхует на случай, если один и тот же текст фразы вдруг заведён в
-    -- нескольких проектах — берём первый по id проекта (редкий крайний случай).
-    SELECT DISTINCT ON (k.name)
-        k.name AS request,
-        g.name AS cluster_topvisor_name,
-        tp.name AS project_name
-    FROM topvisor.dim_keywords k
-    JOIN topvisor.dim_groups g ON g.id = k.group_id
-    JOIN topvisor.dim_projects tp ON tp.id = k.project_id
-    ORDER BY k.name, tp.id
+    SELECT request, cluster_topvisor_name, project_name
+    FROM analytics.v_topvisor_keyword_cluster_map
 )
 SELECT
     sc.event_date,

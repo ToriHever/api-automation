@@ -20,6 +20,16 @@
 ## Цепочка вью (services/analytics/schema.sql)
 
 ```
+topvisor.dim_keywords/dim_groups/dim_projects
+      │
+      ├──▶ v_topvisor_keyword_cluster_map  — request → project_name/cluster_topvisor_name
+      │                                       (по тексту, не по target)
+      └──▶ v_topvisor_group_target_urls    — project_name/cluster_topvisor_name → url_norm
+                                              (только там, где target проставлен)
+
+Обе переиспользуются и в v_gsc_requests_daily ниже, и напрямую в QL-чартах
+(параметризация через внешний WHERE — см. комментарий над ними в schema.sql).
+
 gsc.search_console
       │
       ▼
