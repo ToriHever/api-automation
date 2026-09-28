@@ -24,8 +24,12 @@ gsc.search_console
       │
       ▼
 v_gsc_requests_daily   — + project_name/cluster_topvisor_name (через topvisor.dim_keywords/
-      │                    dim_groups), is_cluster_keyword, is_brand (common.brand_keywords),
-      │                    site (RU/EN/other по домену common.site_map.url)
+      │                    dim_groups, атрибуция по ТЕКСТУ запроса k.name = sc.request — НЕ
+      │                    через target/URL, см. "Известные грабли"), is_cluster_keyword,
+      │                    is_brand (common.brand_keywords), site (RU/EN/other по домену
+      │                    common.site_map.url). Без ограничения по периоду (снято 2026-09-28,
+      │                    раньше было "последние 6 месяцев" — фильтруй event_date снаружи,
+      │                    индексы на нём есть).
       ▼
 v_gsc_requests_agg     — current/prev (скользящие 30 дней), БЕЗ бренда (NOT is_brand),
       │                    группировка request × project_name × cluster_topvisor_name
@@ -254,11 +258,17 @@ Invalid comparison with NULL`.
 
 ### Известные грабли (на будущее)
 
-- **`CREATE OR REPLACE VIEW`** в Postgres не даёт убрать/переставить колонки — только дописать
-  в конец. Если меняешь состав/порядок полей — `DROP VIEW` + `CREATE VIEW` заново (и не забыть
-  дропнуть/пересоздать заодно всё, что зависит: `DROP` в Postgres требует явного порядка —
-  сначала листья зависимостей, `v_gsc_requests_kpi`/`v_gsc_requests_kpi_brand`, потом
-  `v_gsc_requests_agg`, потом `v_gsc_requests_daily`).
+- **`CREATE OR REPLACE VIEW`** в Postgres не даёт убрать/переставить колонки, **ни поменять тип
+  существующей колонки** — только дописать новые в конец. Если меняешь состав/порядок полей ИЛИ
+  тип (как 2026-09-28: `project_name` был `varchar(100)` из `common.dim_projects_engines`, стал
+  `text` из `topvisor.dim_projects.name`) — `DROP VIEW ... CASCADE` + `CREATE VIEW` заново.
+  ⚠️ Если ошибку `cannot change data type of view column` не заметить в выводе `psql -f` (он
+  продолжает выполнять файл дальше и не падает с ненулевым кодом!) — все зависимые `CREATE OR
+  REPLACE VIEW` ниже по файлу молча пересоберутся на **старой** версии базовой вью, а не на
+  новой. Всегда смотри вывод `psql -f schema.sql` целиком на `ERROR:`, не только на код возврата.
+  Сейчас `v_gsc_requests_daily` пересоздаётся через явный `DROP VIEW IF EXISTS ... CASCADE` перед
+  `CREATE VIEW` в самом файле — зависимые вью ниже по файлу это переживают, порядок в файле уже
+  учитывает их пересоздание.
 - **`is_cluster_keyword` как `BOOL_OR` поверх уже агрегированного bucket** — не работает
   (почти всегда `TRUE`, т.к. в топ-3/5/10 обычно попадает хотя бы один трекаемый запрос).
   Правильно — разводить `mode` как отдельное измерение **до** агрегации (см. `buckets` CTE
@@ -283,3 +293,23 @@ Invalid comparison with NULL`.
   `v_gsc_yearly`, о которых в моменте забыли, они оказались живыми и использовались в другой
   таблице DataLens. `SELECT * FROM pg_depend`/информационная схема или хотя бы явный вопрос
   "точно нигде не используется?" — до дропа, не после.
+- **`target`/URL ≠ "запрос отслеживается в TopVisor".** `topvisor.dim_keywords.target` — это
+  целевая страница для проверки релевантности (на что должен ранжироваться запрос), отдельное
+  понятие от "заведён ли запрос как ключевая фраза вообще". До 2026-09-28 `v_gsc_requests_daily`
+  матчила `project_name`/`cluster_topvisor_name`/`is_cluster_keyword` через `target` (JOIN по
+  URL) — любая группа, где `target` не проставлен ни у одной фразы (например `dCAPTCHA` на
+  момент находки — 0 из 6/19 фраз с `target`), молча показывала пустоту по всем метрикам, хотя
+  реальные клики/показы в `gsc.search_console` были. Починено на матчинг **по тексту**
+  (`k.name = sc.request`, CTE `keyword_cluster_map`) — `target` для этой вью больше не нужен,
+  используется только там, где реально нужна проверка релевантности (не в этой вью).
+- **`project_name` нельзя определить по домену/URL** — в TopVisor у `ddos-guard.ru`, "Блог
+  DDoS-Guard" и "Термины DDoS-Guard" **один и тот же** корневой `url` (все три — разделы одного
+  физического сайта, разные объекты отслеживания в TopVisor, не разные домены/пути). Единственный
+  надёжный способ узнать проект для произвольного запроса — через `topvisor.dim_keywords.project_id`
+  (по тексту фразы), не через `common.site_map.url`.
+- **`DISTINCT ON (k.name)` в `keyword_cluster_map`** — подстраховка на случай, если один и тот
+  же текст фразы заведён в нескольких группах/проектах разом (берёт меньший `tp.id`). На
+  2026-09-28 таких коллизий по факту не найдено, но если после добавления новых ключевых фраз
+  какой-то запрос вдруг "перескочит" из ожидаемой группы в другую — проверяй именно это первым
+  делом (`SELECT k.name, g.name, tp.name, tp.id FROM topvisor.dim_keywords k JOIN ... WHERE
+  k.name = '<запрос>' ORDER BY tp.id`).
