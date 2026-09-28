@@ -293,10 +293,9 @@ SELECT
 FROM gsc.search_console sc
 JOIN common.site_map sm ON sm.id = sc.target_url
 LEFT JOIN url_cluster_map ucm ON ucm.target_url_norm = rtrim(lower(sm.url), '/')
-LEFT JOIN cluster_keywords ck ON ck.target_url_norm = rtrim(lower(sm.url), '/') AND ck.request = sc.request
-WHERE sc.event_date >= (CURRENT_DATE - '6 mons'::interval);
+LEFT JOIN cluster_keywords ck ON ck.target_url_norm = rtrim(lower(sm.url), '/') AND ck.request = sc.request;
 
-COMMENT ON VIEW analytics.v_gsc_requests_daily IS 'Базовая вью по gsc.search_console (последние 6 мес.), обогащённая project_name/cluster_topvisor_name (через topvisor.dim_keywords/dim_groups), is_cluster_keyword, is_brand (common.brand_keywords), site (RU/EN по домену) и url (сырой common.site_map.url — один request может ранжироваться по нескольким url, url добавлен последней колонкой из-за ограничения CREATE OR REPLACE VIEW на порядок полей). Источник для всех остальных v_gsc_requests_*.';
+COMMENT ON VIEW analytics.v_gsc_requests_daily IS 'Базовая вью по gsc.search_console (без ограничения по периоду — фильтруйте event_date снаружи, индексы на event_date есть), обогащённая project_name/cluster_topvisor_name (через topvisor.dim_keywords/dim_groups), is_cluster_keyword, is_brand (common.brand_keywords), site (RU/EN по домену) и url (сырой common.site_map.url — один request может ранжироваться по нескольким url, url добавлен последней колонкой из-за ограничения CREATE OR REPLACE VIEW на порядок полей). Источник для всех остальных v_gsc_requests_* и для DataLens-чартов вместо копипасты CTE cluster_keywords/target_urls.';
 
 -- ============================================================
 -- v_gsc_requests_agg — current/prev (30 дней скользящих) на уровне request,
