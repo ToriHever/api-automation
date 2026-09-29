@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GSC — отчёт по запросам</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<style>
+/*__TOKENS_CSS__*/
+/*__DASHBOARD_CSS__*/
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--dl-color-dashboard-background); }
+body { font-family: var(--g-font-family-sans); }
+.dashboard { min-height: 100vh; max-width: 1280px; margin: 0 auto; }
+.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: var(--g-spacing-2); }
+.sub { color: var(--g-color-text-secondary); font: var(--g-text-body-1-font); }
+
+/* 9-column grid, 8px gaps */
+.grid { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: var(--g-spacing-2); margin-top: var(--g-spacing-2); }
+.s2 { grid-column: span 2; } .s3 { grid-column: span 3; } .s4 { grid-column: span 4; }
+.s5 { grid-column: span 5; } .s9 { grid-column: span 9; }
+.dashboard-widget { min-width: 0; }
+.w-title { font: var(--g-text-body-2-font); margin: 0; }
+.w-cap { color: var(--g-color-text-secondary); font: var(--g-text-body-1-font); margin: 2px 0 0; }
+
+/* selectors */
+.filters { display: flex; flex-wrap: wrap; gap: var(--g-spacing-4); align-items: center; }
+.seg { display: inline-flex; background: var(--g-color-base-generic); border-radius: 8px; padding: 2px; }
+.seg button { font: var(--g-text-body-1-font); color: var(--g-color-text-primary); background: transparent; border: 0; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--dl-color-widget-background); box-shadow: 0 0 0 1px var(--g-color-line-generic); }
+.flabel { color: var(--g-color-text-secondary); font: var(--g-text-body-1-font); margin-right: 6px; }
+.fgroup { display: flex; align-items: center; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--g-color-line-focus); outline-offset: 1px; }
+
+/* indicators */
+.kpi .k { color: var(--g-color-text-secondary); font: var(--g-text-body-1-font); }
+.kpi .v { font-size: 28px; line-height: 34px; font-weight: 500; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.kpi .d { margin-top: 6px; font: var(--g-text-body-1-font); font-variant-numeric: tabular-nums; color: var(--g-color-text-secondary); }
+.badge { display: inline-block; padding: 1px 6px; border-radius: 4px; margin-right: 6px; }
+.badge.pos { color: var(--g-color-text-positive); background: var(--g-color-base-positive-light); }
+.badge.neg { color: var(--g-color-text-danger); background: var(--g-color-base-danger-light); }
+.badge.neu { color: var(--g-color-text-secondary); background: var(--g-color-base-generic); }
+
+/* charts */
+.chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: var(--g-spacing-2); }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { fill: var(--g-color-text-secondary); font: var(--g-text-caption-2-font); font-variant-numeric: tabular-nums; }
+.grid-line { stroke: var(--g-color-line-generic); stroke-width: 1; }
+.legend { display: flex; gap: 16px; margin-top: 8px; font: var(--g-text-body-1-font); color: var(--g-color-text-secondary); }
+.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.tip { position: absolute; pointer-events: none; display: none; z-index: 2; padding: 8px 10px; border-radius: 8px; font: var(--g-text-body-1-font); background: var(--g-color-infographics-tooltip-bg); color: var(--g-color-text-primary); box-shadow: 0 0 0 1px var(--g-color-line-generic); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* bars */
+.hbar { display: grid; grid-template-columns: minmax(80px, 34%) 1fr 64px; align-items: center; gap: 10px; padding: 5px 0; font: var(--g-text-body-1-font); }
+.hbar .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar .track { height: 14px; }
+.hbar .fill { display: block; height: 100%; background: var(--dl-graph-palette-color-1); border-radius: 0 4px 4px 0; }
+.hbar .n { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* table */
+.tools { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+input[type=search] { font: var(--g-text-body-1-font); color: var(--g-color-text-primary); background: var(--g-color-base-generic); border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; min-width: 200px; }
+.btn { font: var(--g-text-body-1-font); color: var(--g-color-text-primary); background: var(--g-color-base-generic); border: 0; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.btn:hover { background: var(--g-color-base-generic-hover); }
+.tbl-wrap { overflow-x: auto; margin-top: var(--g-spacing-2); }
+table { width: 100%; border-collapse: collapse; font: var(--g-text-body-1-font); }
+th { font: var(--g-text-subheader-1-font); color: var(--g-color-text-primary); text-align: left; padding: 8px 10px; white-space: nowrap; border-bottom: 1px solid var(--g-color-line-generic); cursor: pointer; user-select: none; }
+td { padding: 8px 10px; border-bottom: 1px solid var(--g-color-line-generic); }
+tr:last-child td { border-bottom: 0; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.req { min-width: 220px; max-width: 380px; }
+td.cl { color: var(--g-color-text-secondary); }
+.pos-t { color: var(--g-color-text-positive); } .neg-t { color: var(--g-color-text-danger); }
+.empty { color: var(--g-color-text-secondary); padding: 24px 0; text-align: center; }
+.more { margin-top: var(--g-spacing-2); }
+.foot { color: var(--g-color-text-secondary); font: var(--g-text-caption-2-font); margin-top: var(--g-spacing-4); }
+.demo { display: none; margin-top: var(--g-spacing-2); padding: 8px 12px; border-radius: 8px; font: var(--g-text-body-1-font); color: var(--g-color-text-warning); background: var(--g-color-base-warning-light); }
+
+@media (max-width: 768px) {
+  .grid > * { grid-column: span 9 !important; }
+  .dashboard { padding-left: var(--g-spacing-2); padding-right: var(--g-spacing-2); }
+}
+</style>
+</head>
+<body class="dashboard">
+  <div class="head">
+    <div>
+      <h1 class="dashboard-title" id="title" style="margin:0"></h1>
+      <div class="sub" id="period"></div>
+    </div>
+    <div class="filters" id="filters"></div>
+  </div>
+  <div class="demo" id="demo"></div>
+
+  <main class="grid">
+    <section class="dashboard-widget kpi s3" id="k-clicks"></section>
+    <section class="dashboard-widget kpi s3" id="k-impr"></section>
+    <section class="dashboard-widget kpi s3" id="k-ctr"></section>
+    <section class="dashboard-widget kpi s3" id="k-pos"></section>
+    <section class="dashboard-widget kpi s2" id="k-top3"></section>
+    <section class="dashboard-widget kpi s2" id="k-top5"></section>
+    <section class="dashboard-widget kpi s2" id="k-top10"></section>
+
+    <section class="dashboard-widget s5">
+      <div class="chart-head">
+        <div><h2 class="w-title" id="trend-title"></h2><p class="w-cap" id="trend-cap"></p></div>
+        <div class="seg" id="metric-seg"></div>
+      </div>
+      <div class="chart" id="trend"></div>
+      <div class="legend" id="trend-legend"></div>
+    </section>
+
+    <section class="dashboard-widget s4">
+      <h2 class="w-title" id="clu-title"></h2>
+      <p class="w-cap" id="clu-cap"></p>
+      <div id="clusters" style="margin-top:8px"></div>
+    </section>
+
+    <section class="dashboard-widget s9">
+      <div class="chart-head">
+        <div><h2 class="w-title" id="tbl-title"></h2><p class="w-cap" id="tbl-cap"></p></div>
+        <div class="tools">
+          <input type="search" id="q">
+          <button class="btn" id="export" type="button"></button>
+        </div>
+      </div>
+      <div class="tbl-wrap"><table id="tbl"></table></div>
+      <button class="btn more" id="more" type="button"></button>
+    </section>
+  </main>
+  <p class="foot" id="foot"></p>
+
+<script>
+// Data is INLINED at build time — the sandbox has no network.
+const DATA = /*__DATA__*/null;
+
+const params = new URLSearchParams(location.search);
+const lang = params.get('lang') === 'en' ? 'en' : 'ru';
+const T = {
+  ru: {
+    title: 'Google Search Console — запросы', period: (a, b, c, d) => `${a} – ${b} · сравнение с ${c} – ${d}`,
+    site: 'Сайт', brand: 'Бренд', all: 'Все', nonBrand: 'Без бренда', brandOnly: 'Только бренд',
+    clicks: 'Клики', impressions: 'Показы', ctr: 'CTR', position: 'Средняя позиция',
+    top3: 'Запросов в ТОП-3', top5: 'Запросов в ТОП-5', top10: 'Запросов в ТОП-10',
+    trend: 'Динамика по дням', trendCap: 'Текущий период и предыдущий, по дню от начала периода',
+    cur: 'Текущий период', prev: 'Предыдущий период', day: 'День',
+    clusters: 'Кластеры по кликам', cluCap: 'Топ-10 кластеров TopVisor', noCluster: 'Без кластера',
+    tblTitle: 'Запросы', tblCap: 'Сортировка по клику на заголовок', search: 'Поиск по запросу…',
+    export: 'Экспорт CSV', more: 'Показать ещё', empty: 'Нет данных для выбранных фильтров',
+    cRequest: 'Запрос', cCluster: 'Кластер', cSite: 'Сайт', cDelta: 'Δ кликов', cPos: 'Позиция',
+    demo: 'Демо-данные: отчёт собран на сгенерированных значениях, не на реальной выгрузке GSC.',
+    generated: 'Данные на', pp: 'п.п.',
+  },
+  en: {
+    title: 'Google Search Console — requests', period: (a, b, c, d) => `${a} – ${b} · compared with ${c} – ${d}`,
+    site: 'Site', brand: 'Brand', all: 'All', nonBrand: 'Non-brand', brandOnly: 'Brand only',
+    clicks: 'Clicks', impressions: 'Impressions', ctr: 'CTR', position: 'Average position',
+    top3: 'Requests in TOP-3', top5: 'Requests in TOP-5', top10: 'Requests in TOP-10',
+    trend: 'Daily trend', trendCap: 'Current vs previous period, by day from period start',
+    cur: 'Current period', prev: 'Previous period', day: 'Day',
+    clusters: 'Clusters by clicks', cluCap: 'Top 10 TopVisor clusters', noCluster: 'No cluster',
+    tblTitle: 'Requests', tblCap: 'Click a header to sort', search: 'Search requests…',
+    export: 'Export CSV', more: 'Show more', empty: 'No data for the selected filters',
+    cRequest: 'Request', cCluster: 'Cluster', cSite: 'Site', cDelta: 'Clicks Δ', cPos: 'Position',
+    demo: 'Demo data: the report is built from generated values, not a real GSC export.',
+    generated: 'Data as of', pp: 'pp',
+  },
+}[lang];
+document.documentElement.lang = lang;
+
+// ---- Theme ----
+const requested = params.get('theme') || 'light';
+const media = matchMedia('(prefers-color-scheme: dark)');
+function applyTheme() {
+  const t = requested === 'system' ? (media.matches ? 'dark' : 'light') : (requested === 'dark' ? 'dark' : 'light');
+  const root = document.documentElement;
+  root.classList.add('g-root');
+  root.classList.remove('g-root_theme_light', 'g-root_theme_dark');
+  root.classList.add('g-root_theme_' + t);
+}
+applyTheme();
+if (requested === 'system') media.addEventListener('change', applyTheme);
+
+// ---- Formatting ----
+const nbsp = ' ';
+function fmtNum(n, digits = 0) {
+  if (n == null || !isFinite(n)) return '—';
+  const parts = Math.abs(n).toFixed(digits).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, lang === 'ru' ? nbsp : ',');
+  return (n < 0 ? '−' : '') + parts.join(lang === 'ru' ? ',' : '.');
+}
+function fmtBig(n) {
+  const a = Math.abs(n);
+  // [порог, делитель, суффикс]: тысячи сокращаем только от 10 000
+  const u = lang === 'ru' ? [[1e9, 1e9, nbsp + 'млрд'], [1e6, 1e6, nbsp + 'млн'], [1e4, 1e3, nbsp + 'тыс.']] : [[1e9, 1e9, 'B'], [1e6, 1e6, 'M'], [1e4, 1e3, 'K']];
+  for (const [t, d, s] of u) if (a >= t) return fmtNum(n / d, 1) + s;
+  return fmtNum(n, 0);
+}
+const fmtPct = (n, d = 1) => (n == null ? '—' : fmtNum(n, d) + '%');
+const MON = { ru: ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'], en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] }[lang];
+function fmtDate(iso, short) {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (short) return lang === 'ru' ? `${d} ${MON[m - 1]}` : `${MON[m - 1]} ${d}`;
+  return lang === 'ru' ? `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}` : `${String(m).padStart(2, '0')}/${String(d).padStart(2, '0')}/${y}`;
+}
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+
+// ---- State (memory only) ----
+const state = { site: 'all', brand: 'non', metric: 'clicks', sort: 'clicks', dir: -1, q: '', limit: 25 };
+const P = DATA.period; // {from,to,prev_from,prev_to}
+const dayIndex = (iso, from) => Math.round((Date.parse(iso) - Date.parse(from)) / 864e5);
+
+const pass = (r) => (state.site === 'all' || r.site === state.site)
+  && (state.brand === 'all' || (state.brand === 'brand') === !!r.brand);
+
+// ---- Aggregation ----
+function sumDaily(period) {
+  const o = { clicks: 0, impressions: 0, posw: 0 };
+  for (const r of DATA.daily) if (r.period === period && pass(r)) { o.clicks += r.clicks; o.impressions += r.impressions; o.posw += r.position * r.impressions; }
+  o.ctr = o.impressions ? o.clicks / o.impressions * 100 : null;
+  o.position = o.impressions ? o.posw / o.impressions : null;
+  return o;
+}
+const pctDelta = (c, p) => (p ? (c - p) / p * 100 : null);
+
+function badge(delta, { inverse = false, unit = '%', digits = 1 } = {}) {
+  if (delta == null || !isFinite(delta)) return '<span class="badge neu">—</span>';
+  if (Math.abs(delta) < 0.05) return `<span class="badge neu">0${unit === '%' ? '%' : ' ' + unit}</span>`;
+  const good = inverse ? delta < 0 : delta > 0;
+  const arrow = delta > 0 ? '▲' : '▼';
+  const txt = (delta > 0 ? '+' : '') + fmtNum(delta, digits) + (unit === '%' ? '%' : nbsp + unit);
+  return `<span class="badge ${good ? 'pos' : 'neg'}">${arrow} ${txt}</span>`;
+}
+
+function requestsView() {
+  return DATA.requests.filter(pass);
+}
+
+// ---- Render: filters ----
+function seg(id, opts, key) {
+  return `<div class="seg" id="${id}" role="group">` + opts.map(([v, l]) => `<button type="button" data-k="${key}" data-v="${v}" aria-pressed="${state[key] === v}">${esc(l)}</button>`).join('') + '</div>';
+}
+function renderFilters() {
+  const sites = ['all', ...Array.from(new Set(DATA.requests.map((r) => r.site))).sort()];
+  document.getElementById('filters').innerHTML =
+    `<div class="fgroup"><span class="flabel">${T.site}</span>${seg('f-site', sites.map((s) => [s, s === 'all' ? T.all : s]), 'site')}</div>` +
+    `<div class="fgroup"><span class="flabel">${T.brand}</span>${seg('f-brand', [['non', T.nonBrand], ['brand', T.brandOnly], ['all', T.all]], 'brand')}</div>`;
+  document.getElementById('metric-seg').innerHTML = [['clicks', T.clicks], ['impressions', T.impressions]]
+    .map(([v, l]) => `<button type="button" data-k="metric" data-v="${v}" aria-pressed="${state.metric === v}">${l}</button>`).join('');
+}
+
+// ---- Render: KPIs ----
+function kpi(id, label, value, deltaHtml, note) {
+  document.getElementById(id).innerHTML = `<div class="k">${label}</div><div class="v">${value}</div><div class="d">${deltaHtml}${note || ''}</div>`;
+}
+function renderKpis() {
+  const c = sumDaily('current'), p = sumDaily('previous');
+  kpi('k-clicks', T.clicks, fmtNum(c.clicks), badge(pctDelta(c.clicks, p.clicks)), fmtBig(p.clicks));
+  kpi('k-impr', T.impressions, fmtBig(c.impressions), badge(pctDelta(c.impressions, p.impressions)), fmtBig(p.impressions));
+  kpi('k-ctr', T.ctr, fmtPct(c.ctr, 2), badge(c.ctr != null && p.ctr != null ? c.ctr - p.ctr : null, { unit: T.pp, digits: 2 }), fmtPct(p.ctr, 2));
+  kpi('k-pos', T.position, fmtNum(c.position, 1), badge(c.position != null && p.position != null ? c.position - p.position : null, { inverse: true, unit: '', digits: 1 }).replace(nbsp, ''), fmtNum(p.position, 1));
+  const rs = requestsView().filter((r) => r.impressions > 0);
+  const cnt = (lim) => rs.filter((r) => r.position <= lim).length;
+  const cntP = (lim) => rs.filter((r) => r.position_prev != null && r.position_prev <= lim).length;
+  for (const [id, label, lim] of [['k-top3', T.top3, 3.5], ['k-top5', T.top5, 5.5], ['k-top10', T.top10, 10.5]]) {
+    const cur = cnt(lim), prv = cntP(lim);
+    kpi(id, label, fmtNum(cur), badge(cur - prv, { unit: '', digits: 0 }).replace(nbsp, ''), fmtNum(prv));
+  }
+}
+
+// ---- Render: trend (SVG, no external libs) ----
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e;
+}
+function renderTrend() {
+  const days = Math.max(dayIndex(P.to, P.from), dayIndex(P.prev_to, P.prev_from)) + 1;
+  const m = state.metric;
+  const cur = new Array(days).fill(0), prv = new Array(days).fill(0);
+  for (const r of DATA.daily) {
+    if (!pass(r)) continue;
+    if (r.period === 'current') cur[dayIndex(r.date, P.from)] += r[m];
+    else prv[dayIndex(r.date, P.prev_from)] += r[m];
+  }
+  const box = document.getElementById('trend');
+  const W = Math.max(box.clientWidth, 280), H = 260, ml = 44, mr = 8, mt = 8, mb = 26;
+  const max = niceMax(Math.max(...cur, ...prv));
+  const x = (i) => ml + (days === 1 ? 0 : i / (days - 1) * (W - ml - mr));
+  const y = (v) => mt + (1 - v / max) * (H - mt - mb);
+  const line = (a) => a.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(' ');
+  let g = '';
+  for (let i = 0; i <= 4; i++) {
+    const v = max / 4 * i;
+    g += `<line class="grid-line" x1="${ml}" x2="${W - mr}" y1="${y(v)}" y2="${y(v)}"/><text x="${ml - 6}" y="${y(v) + 4}" text-anchor="end">${fmtBig(v)}</text>`;
+  }
+  g += `<line x1="${ml}" x2="${W - mr}" y1="${y(0)}" y2="${y(0)}" stroke="var(--g-color-infographics-axis)" stroke-width="1"/>`;
+  const step = Math.ceil(days / 6);
+  for (let i = 0; i < days; i += step) g += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${fmtDate(addDays(P.from, i), true)}</text>`;
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="${T.trend}">${g}
+    <path d="${line(prv)}" fill="none" stroke="var(--dl-graph-palette-color-2)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <path d="${line(cur)}" fill="none" stroke="var(--dl-graph-palette-color-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <line id="cross" y1="${mt}" y2="${H - mb}" stroke="var(--g-color-line-generic-solid)" style="display:none"/>
+    <rect id="hit" x="${ml}" y="${mt}" width="${W - ml - mr}" height="${H - mt - mb}" fill="transparent"/></svg><div class="tip" id="tip"></div>`;
+  const tip = document.getElementById('tip'), cross = document.getElementById('cross');
+  const hit = document.getElementById('hit');
+  const scale = () => box.querySelector('svg').getBoundingClientRect().width / W;
+  hit.addEventListener('mousemove', (e) => {
+    const rect = box.querySelector('svg').getBoundingClientRect();
+    const px = (e.clientX - rect.left) / scale();
+    const i = Math.min(days - 1, Math.max(0, Math.round((px - ml) / (W - ml - mr) * (days - 1))));
+    cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.style.display = '';
+    tip.innerHTML = `<div>${fmtDate(addDays(P.from, i))} <span style="color:var(--g-color-text-secondary)">/ ${fmtDate(addDays(P.prev_from, i))}</span></div>`
+      + `<div><b style="color:var(--dl-graph-palette-color-1)">●</b> ${fmtNum(cur[i])}</div><div><b style="color:var(--dl-graph-palette-color-2)">●</b> ${fmtNum(prv[i])}</div>`;
+    tip.style.display = 'block';
+    const tx = x(i) * scale() + 12;
+    tip.style.left = Math.min(tx, box.clientWidth - tip.offsetWidth) + 'px';
+    tip.style.top = '8px';
+  });
+  hit.addEventListener('mouseleave', () => { tip.style.display = 'none'; cross.style.display = 'none'; });
+  document.getElementById('trend-legend').innerHTML =
+    `<span><i style="background:var(--dl-graph-palette-color-1)"></i>${T.cur}</span><span><i style="background:var(--dl-graph-palette-color-2)"></i>${T.prev}</span>`;
+}
+
+// ---- Render: clusters ----
+function renderClusters() {
+  const by = new Map();
+  for (const r of requestsView()) {
+    const k = r.cluster || T.noCluster;
+    by.set(k, (by.get(k) || 0) + r.clicks);
+  }
+  const rows = [...by.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const max = rows.length ? rows[0][1] : 0;
+  document.getElementById('clusters').innerHTML = rows.length
+    ? rows.map(([n, v]) => `<div class="hbar"><span class="name" title="${esc(n)}">${esc(n)}</span><span class="track"><span class="fill" style="width:${max ? Math.max(2, v / max * 100) : 0}%"></span></span><span class="n">${fmtNum(v)}</span></div>`).join('')
+    : `<div class="empty">${T.empty}</div>`;
+}
+
+// ---- Render: table ----
+const COLS = [
+  ['request', T.cRequest, false], ['cluster', T.cCluster, false], ['site', T.cSite, false],
+  ['clicks', T.clicks, true], ['impressions', T.impressions, true], ['ctr', T.ctr, true],
+  ['position', T.cPos, true], ['dclicks', T.cDelta, true],
+];
+const ctrOf = (r) => (r.impressions ? r.clicks / r.impressions * 100 : 0);
+const dOf = (r) => pctDelta(r.clicks, r.clicks_prev);
+function tableRows() {
+  const q = state.q.trim().toLowerCase();
+  const key = { ctr: ctrOf, dclicks: (r) => (dOf(r) == null ? -Infinity : dOf(r)) }[state.sort] || ((r) => r[state.sort]);
+  return requestsView().filter((r) => !q || r.request.toLowerCase().includes(q))
+    .sort((a, b) => { const x = key(a), y = key(b); return (typeof x === 'string' ? (x || '').localeCompare(y || '') : x - y) * state.dir; });
+}
+function renderTable() {
+  const rows = tableRows();
+  document.getElementById('tbl-cap').textContent = T.tblCap + ' · ' + fmtNum(rows.length);
+  const head = COLS.map(([k, l, n]) => `<th class="${n ? 'num' : ''}" data-sort="${k}">${l}${state.sort === k ? (state.dir < 0 ? ' ↓' : ' ↑') : ''}</th>`).join('');
+  const body = rows.slice(0, state.limit).map((r) => {
+    const d = dOf(r);
+    return `<tr><td class="req">${esc(r.request)}</td><td class="cl">${esc(r.cluster || '—')}</td><td class="cl">${esc(r.site)}</td>`
+      + `<td class="num">${fmtNum(r.clicks)}</td><td class="num">${fmtNum(r.impressions)}</td><td class="num">${fmtPct(ctrOf(r), 2)}</td>`
+      + `<td class="num">${fmtNum(r.position, 1)}</td><td class="num ${d == null ? '' : d >= 0 ? 'pos-t' : 'neg-t'}">${d == null ? '—' : (d > 0 ? '▲ +' : d < 0 ? '▼ ' : '') + fmtNum(d, 1) + '%'}</td></tr>`;
+  }).join('');
+  document.getElementById('tbl').innerHTML = rows.length ? `<thead><tr>${head}</tr></thead><tbody>${body}</tbody>` : `<tbody><tr><td class="empty">${T.empty}</td></tr></tbody>`;
+  document.getElementById('more').style.display = rows.length > state.limit ? '' : 'none';
+}
+
+function renderAll() {
+  renderFilters(); renderKpis(); renderTrend(); renderClusters(); renderTable();
+}
+
+// ---- Static text ----
+document.title = T.title;
+document.getElementById('title').textContent = T.title;
+document.getElementById('period').textContent = T.period(fmtDate(P.from), fmtDate(P.to), fmtDate(P.prev_from), fmtDate(P.prev_to));
+document.getElementById('trend-title').textContent = T.trend;
+document.getElementById('trend-cap').textContent = T.trendCap;
+document.getElementById('clu-title').textContent = T.clusters;
+document.getElementById('clu-cap').textContent = T.cluCap;
+document.getElementById('tbl-title').textContent = T.tblTitle;
+document.getElementById('q').placeholder = T.search;
+document.getElementById('export').textContent = T.export;
+document.getElementById('more').textContent = T.more;
+document.getElementById('foot').textContent = `${T.generated} ${fmtDate(DATA.generated)} · analytics.v_gsc_requests_daily`;
+if (DATA.demo) { const d = document.getElementById('demo'); d.textContent = T.demo; d.style.display = 'block'; }
+
+// ---- Events ----
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button[data-k]');
+  if (b) { state[b.dataset.k] = b.dataset.v; state.limit = 25; renderAll(); return; }
+  const th = e.target.closest('th[data-sort]');
+  if (th) {
+    const k = th.dataset.sort;
+    state.dir = state.sort === k ? -state.dir : (['request', 'cluster', 'site'].includes(k) ? 1 : -1);
+    state.sort = k; renderTable();
+  }
+});
+document.getElementById('q').addEventListener('input', (e) => { state.q = e.target.value; state.limit = 25; renderTable(); });
+document.getElementById('more').addEventListener('click', () => { state.limit += 50; renderTable(); });
+document.getElementById('export').addEventListener('click', () => {
+  const q = (s) => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
+  const lines = [['request', 'cluster', 'site', 'clicks', 'impressions', 'ctr_pct', 'position', 'clicks_prev'].join(',')];
+  for (const r of tableRows()) lines.push([q(r.request), q(r.cluster), q(r.site), r.clicks, r.impressions, ctrOf(r).toFixed(2), r.position, r.clicks_prev].join(','));
+  // Downloads are blocked in the sandbox — hand the file to the host.
+  parent.postMessage({ code: 'EXPORT', data: { name: 'gsc-requests.csv', mime: 'text/csv', data: '﻿' + lines.join('\n') } }, '*');
+});
+new ResizeObserver(() => renderTrend()).observe(document.getElementById('trend'));
+
+// Links don't navigate in the sandbox — route through the host, only when framed.
+if (window.parent !== window) {
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href');
+    if (!href || href.startsWith('#')) return;
+    e.preventDefault();
+    parent.postMessage({ code: 'OPEN_URL', data: { url: a.href } }, '*');
+  });
+}
+
+renderAll();
+</script>
+</body>
+</html>
