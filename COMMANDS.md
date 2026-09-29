@@ -104,7 +104,26 @@ bash cron/hourly-check.sh
 
 # Еженедельное обслуживание
 bash cron/weekly-maintenance.sh
+
+# Еженедельный бэкап VDS (БД + .env/config + проект), ротация 8 недель
+bash cron/weekly-backup.sh
 ```
+
+### Бэкап VDS
+Скрипт `cron/weekly-backup.sh` кладёт в `BACKUP_DIR` (по умолчанию `/var/backups/api-automation`,
+вне проекта) три файла: `db_*.dump` (pg_dump -Fc), `config_*.tar.gz` (.env, config, tokens, keys, права 600),
+`project_*.tar.gz` (без node_modules/logs/backups). Старше `BACKUP_RETENTION_DAYS` (56) — удаляются,
+но только если текущий запуск прошёл без ошибок. При сбое — уведомление в Telegram.
+
+Опционально в `.env`: `BACKUP_DIR`, `BACKUP_RETENTION_DAYS`, `BACKUP_RCLONE_REMOTE` (например
+`s3backup:my-bucket/api-automation` — внешняя копия через rclone, чистится по тому же сроку).
+
+Cron (воскресенье 03:00):
+```bash
+0 3 * * 0 /opt/api-automation/cron/weekly-backup.sh >> /opt/api-automation/logs/system/backup.log 2>&1
+```
+
+Восстановление БД: `pg_restore -d <база> --clean --if-exists db_YYYYMMDD_HHMM.dump`
 
 ### Запуск конкретного сервиса через cron-скрипт
 ```bash
