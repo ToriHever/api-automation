@@ -94,6 +94,26 @@ node scripts/run-all.js
 npm run categorize
 ```
 
+## 📈 Разовая выгрузка трафика GA4 + Яндекс.Метрика (36 мес.)
+```bash
+# Трафик по дням и каналам за 36 месяцев, отдельно ru (ddos-guard.ru) и en (ddos-guard.net),
+# строго эти хосты без поддоменов. Пишет в reports.traffic_daily (схема создаётся сама,
+# services/reports/schema.sql), повторный запуск = upsert без дублей.
+node scripts/traffic-history-36m.js
+
+# Только один источник / сайт / другой период
+node scripts/traffic-history-36m.js --source ga4 --site ru
+node scripts/traffic-history-36m.js --source metrika --months 12
+```
+Нужно в `.env`: `GA4_PROPERTY_ID`, `YANDEX_METRIKA_COUNTER_ID`, `YANDEX_METRIKA_TOKEN`
+(OAuth со scope `metrika:read`). Если счётчики/property разные для ru и en — `*_RU` / `*_EN`.
+
+Нюансы:
+- `reports.traffic_daily.sessions`: GA4 sessions / Метрика visits; `engaged_sessions` только у GA4.
+- `users` нельзя суммировать по каналам (один человек в нескольких каналах).
+- Данные ru начинаются с ~середины 2024 (в GA4 и Метрике), en — с 2023-10. Периоды Метрики с `sampled=true` — оценки, округляются до целых.
+- Если в оболочке сервера экспортирована переменная-заглушка (например `YANDEX_METRIKA_COUNTER_ID=your_counter_id`), `dotenv` не перезапишет её значением из `.env` — сделать `unset`.
+
 ## ⏰ Автоматизация через cron
 ### Прямой запуск bash-скриптов
 
