@@ -23,10 +23,14 @@ const { SITES, GA4_URL, METRIKA_URL, arg, getRange, chunkRange, withRetry } = re
 const SCHEMA_FILES = ['schema.sql', 'organic_engine_schema.sql']
     .map(f => path.join(__dirname, '..', 'services', 'reports', f));
 
+// Только поисковые домены Яндекса. oauth.yandex.ru (вход в ЛК), yandex.promopages (Дзен),
+// practicum.yandex.ru, alice.yandex.ru и т.п. — не поиск, они идут в Other.
+const YANDEX_SEARCH = /^(www\.)?(yandex(\.(ru|by|kz|com|com\.tr|uz|ua|kg|az|md|ge|am|lt|lv|ee|fr))?|ya\.ru)$/;
+
 // Сводит название источника из GA4/Метрики к Yandex / Google / Other
 function normalizeEngine(raw) {
-    const s = String(raw || '').toLowerCase();
-    if (s.includes('yandex') || s.includes('яндекс') || s === 'ya.ru' || s.startsWith('ya.')) return 'Yandex';
+    const s = String(raw || '').trim().toLowerCase();
+    if (s === 'яндекс' || YANDEX_SEARCH.test(s)) return 'Yandex';
     if (s.includes('google')) return 'Google';
     return 'Other';
 }
@@ -129,9 +133,16 @@ function mergeRows(rows) {
     return [...merged.values()];
 }
 
-async function saveRows(db, source, site, rows) {
+async function saveRows(db, source, site, rows, range) {
     const list = mergeRows(rows);
     const BATCH = 500;
+    // Период пересобирается целиком: иначе строки, исчезнувшие после смены правил свёртки, остались бы
+    await db.query('BEGIN');
+    try {
+    await db.query(
+        `DELETE FROM reports.traffic_organic_engine WHERE source = $1 AND site = $2 AND event_date BETWEEN $3 AND $4`,
+        [source, site, range.start, range.end]
+    );
     for (let i = 0; i < list.length; i += BATCH) {
         const part = list.slice(i, i + BATCH);
         const params = [];
@@ -149,6 +160,11 @@ async function saveRows(db, source, site, rows) {
                new_users = EXCLUDED.new_users, pageviews = EXCLUDED.pageviews, updated_at = CURRENT_TIMESTAMP`,
             params
         );
+    }
+    await db.query('COMMIT');
+    } catch (e) {
+        await db.query('ROLLBACK');
+        throw e;
     }
     console.log(`→ reports.traffic_organic_engine: ${list.length} строк (${source}/${site})`);
 }
@@ -174,7 +190,7 @@ async function main() {
                 const rawSeen = new Map();
                 try {
                     const rows = source === 'ga4' ? await fetchGA4(auth, site, range, rawSeen) : await fetchMetrika(site, range, rawSeen);
-                    await saveRows(db, source, site, rows);
+                    await saveRows(db, source, site, rows, range);
                     // Как сырые названия свелись к движкам (проверить, что «Other» не прячет Яндекс/Google)
                     const top = [...rawSeen.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
                     console.log('Источники (сессий за период):\n' + top.map(([k, v]) => `  ${k}: ${v}`).join('\n'));
@@ -190,6 +206,6 @@ async function main() {
     if (failed) process.exitCode = 1;
 }
 
-module.exports = { normalizeEngine, mergeRows };
+module.exports = { normalizeEngine, mergeRows, saveRows };
 
 if (require.main === module) main();
