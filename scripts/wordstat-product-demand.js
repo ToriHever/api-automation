@@ -3,7 +3,8 @@
 //
 // 1. Заполняет reports.demand_phrases из групп проекта ddos-guard.ru в Топвизоре:
 //    L3-4, L7, VDS/VPS (-> VDS), DS, Хостинг, Главная. Исключены DDG VM, Cloudflare,
-//    dCAPTCHA, Аудит ИБ, ОРИ (в список групп не входят).
+//    dCAPTCHA, Аудит ИБ, ОРИ (в список групп не входят). В «Главную» — только type_request_id = 1
+//    (коммерческие). Фразы с кластером «Заказ атаки?» включены сознательно.
 // 2. Для фраз, у которых динамика за диапазон ещё не собрана, делает ОДИН запрос на фразу
 //    за весь диапазон (PERIOD_MONTHLY) и пишет в wordstat.dynamics_range (upsert).
 //
@@ -48,6 +49,8 @@ const SYNC_PHRASES_SQL = `
     JOIN common.requests r ON r.request = k.name
     WHERE p.name = 'ddos-guard.ru'
       AND g.name IN ('L3-4', 'L7', 'VDS/VPS', 'DS', 'Хостинг', 'Главная')
+      -- на «Главную» относим только коммерческие запросы (common.type_request: 1 = Коммерческий)
+      AND (g.name <> 'Главная' OR r.type_request_id = 1)
     ON CONFLICT (request_id, product) DO NOTHING
 `;
 
