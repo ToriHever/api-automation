@@ -27,16 +27,21 @@ services/wordstat/
 ├── config.json                # Конфигурация сервиса
 ├── schema.sql                 # SQL схема (таблицы, триггеры, очередь)
 ├── README.md                  # Этот файл
-└── keywords/                              # АРХИВ — больше не читается коллектором
-    ├── dynamics_keywords_commercial.txt  # (перенесено в wordstat.check_list 2026-09-30)
-    ├── dynamics_keywords_content.txt     # (перенесено в wordstat.check_list 2026-09-30)
+└── keywords/
     ├── dynamics_keywords.txt             # legacy, коллектором по умолчанию больше не используется
-    ├── dynamics_range_keywords.txt       # ещё читается напрямую — см. scripts/wordstat-dynamics-range-daily.js
-    └── top_keywords.txt                  # (перенесено в wordstat.check_list 2026-09-30)
+    │                                     # (ещё нужен как вход scripts/wordstat-merge-untracked.js)
+    └── dynamics_range_keywords.txt       # читается напрямую, см. scripts/wordstat-dynamics-range-daily.js
 ```
 
-Список активных фраз для `dynamics`/`top` теперь в БД — см. "Управление списком
-проверяемых фраз" ниже.
+Список активных фраз для `dynamics`/`top` теперь в БД (`wordstat.check_list`) —
+см. "Управление списком проверяемых фраз" ниже.
+
+⚠️ **2026-09-30**: `dynamics_keywords_commercial.txt`, `dynamics_keywords_content.txt`
+и `top_keywords.txt` перенесены в `wordstat.check_list`
+(`scripts/migrate-wordstat-checklist.js`, 1289+3148+48 фраз) и **удалены из
+репозитория** — коллектор их больше не читает, хранить их дальше было бы
+дублирующимся источником правды. Если нужно свериться с историческим
+состоянием списков — смотрите git-историю файла до коммита, удалившего их.
 
 ### Почему у dynamics есть category (commercial/content)
 
