@@ -3,7 +3,8 @@
 // отдельно для ru (ddos-guard.ru) и en (ddos-guard.net). Строго эти хосты, без поддоменов:
 //   GA4:      hostName == домен (EXACT)
 //   Метрика:  ym:s:startURLDomain == домен (точное совпадение)
-// Гранулярность: день × канал трафика. Результат — CSV в scripts/output/ (папка в .gitignore).
+// Гранулярность: день × канал трафика. Результат — таблица reports.traffic_daily (схема
+// services/reports/schema.sql создаётся автоматически, повторный запуск = upsert).
 //
 // .env:
 //   GA4_PROPERTY_ID            — если ru и en в одном property (фильтр по hostName разведёт их)
@@ -22,6 +23,7 @@ const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
 const GoogleAuthManager = require('../core/GoogleAuthManager');
+const DatabaseManager = require('../core/DatabaseManager');
 
 const SITES = {
     ru: { host: 'ddos-guard.ru' },
@@ -30,7 +32,7 @@ const SITES = {
 
 const GA4_URL = 'https://analyticsdata.googleapis.com/v1beta/properties';
 const METRIKA_URL = 'https://api-metrica.yandex.net/stat/v1/data';
-const OUT_DIR = path.join(__dirname, 'output');
+const SCHEMA_FILE = path.join(__dirname, '..', 'services', 'reports', 'schema.sql');
 
 function arg(name, def) {
     const i = process.argv.indexOf(`--${name}`);
@@ -115,21 +117,19 @@ async function fetchGA4(auth, siteKey, range) {
             const r = data.rows || [];
             for (const row of r) {
                 const d = row.dimensionValues[0].value;
-                rows.push([
-                    `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
-                    row.dimensionValues[1].value,
-                    ...row.metricValues.map(v => Number(v.value))
-                ]);
+                const m = row.metricValues.map(v => Number(v.value));
+                rows.push({
+                    event_date: `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+                    channel: row.dimensionValues[1].value,
+                    sessions: m[0], engaged_sessions: m[1], users: m[2], new_users: m[3], pageviews: m[4]
+                });
             }
             console.log(`  GA4 ${siteKey} ${ch.start}..${ch.end}: +${r.length} (offset ${offset})`);
             if (r.length < 100000) break;
             offset += 100000;
         }
     }
-    return {
-        header: ['date', 'channel', 'sessions', 'engaged_sessions', 'users', 'new_users', 'pageviews'],
-        rows
-    };
+    return rows;
 }
 
 // ---------------- Метрика ----------------
@@ -165,22 +165,54 @@ async function fetchMetrika(siteKey, range) {
 
             const r = data.data || [];
             for (const row of r) {
-                rows.push([row.dimensions[0].name, row.dimensions[1].name, ...row.metrics]);
+                const m = row.metrics;
+                rows.push({
+                    event_date: row.dimensions[0].name,
+                    channel: row.dimensions[1].name,
+                    sessions: m[0], engaged_sessions: null, users: m[1], new_users: m[2], pageviews: m[3]
+                });
             }
             console.log(`  Metrika ${siteKey} ${ch.start}..${ch.end}: +${r.length} (offset ${offset}), sampled=${data.sampled}`);
             if (r.length < 100000) break;
             offset += 100000;
         }
     }
-    return { header: ['date', 'channel', 'visits', 'users', 'new_users', 'pageviews'], rows };
+    return rows;
 }
 
-function writeCsv(file, { header, rows }) {
-    fs.mkdirSync(OUT_DIR, { recursive: true });
-    const esc = v => (typeof v === 'string' && /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-    const text = [header, ...rows].map(r => r.map(esc).join(',')).join('\n') + '\n';
-    fs.writeFileSync(path.join(OUT_DIR, file), '﻿' + text, 'utf8');
-    console.log(`→ scripts/output/${file} (${rows.length} строк)`);
+async function saveRows(db, source, site, rows) {
+    // GA4/Метрика могут вернуть одинаковый (дата, канал) дважды — суммируем
+    const merged = new Map();
+    for (const r of rows) {
+        const key = `${r.event_date}|${r.channel}`;
+        const e = merged.get(key);
+        if (!e) { merged.set(key, { ...r }); continue; }
+        for (const f of ['sessions', 'users', 'new_users', 'pageviews']) e[f] += r[f];
+        if (r.engaged_sessions !== null) e.engaged_sessions = (e.engaged_sessions || 0) + r.engaged_sessions;
+    }
+    const list = [...merged.values()];
+    const BATCH = 500;
+    for (let i = 0; i < list.length; i += BATCH) {
+        const part = list.slice(i, i + BATCH);
+        const params = [];
+        const values = part.map((r, j) => {
+            params.push(source, site, SITES[site].host, r.event_date, r.channel,
+                r.sessions, r.engaged_sessions, r.users, r.new_users, r.pageviews);
+            const o = j * 10;
+            return `(${Array.from({ length: 10 }, (_, k) => `$${o + k + 1}`).join(',')})`;
+        });
+        await db.query(
+            `INSERT INTO reports.traffic_daily
+             (source, site, host, event_date, channel, sessions, engaged_sessions, users, new_users, pageviews)
+             VALUES ${values.join(',')}
+             ON CONFLICT (source, site, event_date, channel) DO UPDATE SET
+               host = EXCLUDED.host, sessions = EXCLUDED.sessions, engaged_sessions = EXCLUDED.engaged_sessions,
+               users = EXCLUDED.users, new_users = EXCLUDED.new_users, pageviews = EXCLUDED.pageviews,
+               updated_at = CURRENT_TIMESTAMP`,
+            params
+        );
+    }
+    console.log(`→ reports.traffic_daily: ${list.length} строк (${source}/${site})`);
 }
 
 async function main() {
@@ -194,8 +226,11 @@ async function main() {
     console.log(`Период: ${range.start} .. ${range.end}; источники: ${sources}; сайты: ${sites.map(s => SITES[s].host)}`);
 
     const auth = sources.includes('ga4') ? new GoogleAuthManager() : null;
-    const stamp = `${range.start}_${range.end}`;
     let failed = 0;
+
+    const db = new DatabaseManager('traffic-history');
+    await db.connect();
+    await db.query(fs.readFileSync(SCHEMA_FILE, 'utf8'));
 
     for (const site of sites) {
         for (const source of sources) {
@@ -204,13 +239,14 @@ async function main() {
                 const result = source === 'ga4'
                     ? await fetchGA4(auth, site, range)
                     : await fetchMetrika(site, range);
-                writeCsv(`traffic_${source}_${site}_${stamp}.csv`, result);
+                await saveRows(db, source, site, result);
             } catch (e) {
                 failed++;
                 console.error(`✗ ${source}/${site}: ${e.message}`);
             }
         }
     }
+    await db.disconnect();
     if (failed) process.exitCode = 1;
 }
 
