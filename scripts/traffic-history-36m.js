@@ -252,4 +252,6 @@ async function main() {
     if (failed) process.exitCode = 1;
 }
 
-main();
+module.exports = { SITES, GA4_URL, METRIKA_URL, arg, getRange, chunkRange, withRetry };
+
+if (require.main === module) main();

@@ -114,6 +114,30 @@ node scripts/traffic-history-36m.js --source metrika --months 12
 - Данные ru начинаются с ~середины 2024 (в GA4 и Метрике), en — с 2023-10. Периоды Метрики с `sampled=true` — оценки, округляются до целых.
 - Если в оболочке сервера экспортирована переменная-заглушка (например `YANDEX_METRIKA_COUNTER_ID=your_counter_id`), `dotenv` не перезапишет её значением из `.env` — сделать `unset`.
 
+## 🔎 Органика по поисковым системам (Яндекс / Google)
+```bash
+# Органический трафик по дням и поисковикам, ru и en, GA4 и Метрика -> reports.traffic_organic_engine (upsert)
+node scripts/traffic-organic-engines.js
+node scripts/traffic-organic-engines.js --source ga4 --site ru --months 24
+
+# Сезонные индексы по каждому поисковику (seo_traffic_ga4_yandex / _google, seo_traffic_metrika_yandex / _google)
+node scripts/seasonality-index.js --series engines --dry-run
+```
+GA4: канал Organic Search + `hostName` == домен, группировка `sessionSource`. Метрика: `lastTrafficSource=='organic'` + `startURLDomain`, группировка `lastSearchEngineRoot`.
+Сырые названия сводятся к `Yandex` / `Google` / `Other`; в конце запуска скрипт печатает, какие сырые источники во что свелись (проверить, что в `Other` нет Яндекса/Google).
+Нужно ли это: чтобы понять, чьё падение органики (например, ru с апреля 2026) — Яндекса или Google.
+
+Год к году по поисковику:
+```sql
+SELECT a.source, a.site, a.engine, to_char(a.month, 'YYYY-MM') AS month, a.sessions,
+       b.sessions AS prev_year, ROUND((a.sessions::numeric / NULLIF(b.sessions, 0) - 1) * 100) AS yoy_pct
+FROM reports.v_organic_engine_monthly a
+LEFT JOIN reports.v_organic_engine_monthly b
+  ON b.source = a.source AND b.site = a.site AND b.engine = a.engine AND b.month = a.month - INTERVAL '1 year'
+WHERE a.site = 'ru' AND a.month >= '2025-10-01' AND a.engine IN ('Yandex', 'Google')
+ORDER BY a.source, a.engine, a.month;
+```
+
 ## 📊 Сезонные индексы органического трафика (основа «Нормы трафика SEO»)
 ```bash
 # Считает индексы по reports.traffic_daily, пишет в reports.seasonality_monthly и reports.seasonality_index

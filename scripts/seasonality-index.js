@@ -27,6 +27,7 @@
 //   node scripts/seasonality-index.js
 //   node scripts/seasonality-index.js --series seo_traffic_ga4 --site ru
 //   node scripts/seasonality-index.js --series demand          # все продукты спроса
+//   node scripts/seasonality-index.js --series engines         # органика по Яндексу / Google
 //   node scripts/seasonality-index.js --series demand_L7
 //   node scripts/seasonality-index.js --from 2024-09-16 --min-months 10 --dry-run   # без записи в БД
 
@@ -35,12 +36,17 @@ const fs = require('fs');
 const path = require('path');
 const DatabaseManager = require('../core/DatabaseManager');
 
-const SCHEMA_FILES = ['schema.sql', 'seasonality_schema.sql', 'demand_schema.sql']
+const SCHEMA_FILES = ['schema.sql', 'seasonality_schema.sql', 'demand_schema.sql', 'organic_engine_schema.sql']
     .map(f => path.join(__dirname, '..', 'services', 'reports', f));
 
 const SERIES = {
     seo_traffic_ga4: { source: 'ga4', channel: 'Organic Search' },
-    seo_traffic_metrika: { source: 'metrika', channel: 'Переходы из поисковых систем' }
+    seo_traffic_metrika: { source: 'metrika', channel: 'Переходы из поисковых систем' },
+    // Органика по поисковым системам (reports.traffic_organic_engine, scripts/traffic-organic-engines.js)
+    seo_traffic_ga4_yandex: { source: 'ga4', engine: 'Yandex' },
+    seo_traffic_ga4_google: { source: 'ga4', engine: 'Google' },
+    seo_traffic_metrika_yandex: { source: 'metrika', engine: 'Yandex' },
+    seo_traffic_metrika_google: { source: 'metrika', engine: 'Google' }
 };
 
 // Параметры автоопределения аномалий
@@ -210,12 +216,16 @@ function daysInMonth(monthStr) {
 }
 
 async function loadRows(db, series, site, from) {
-    const { source, channel } = SERIES[series];
-    const values = await db.query(
-        `SELECT to_char(date_trunc('month', event_date), 'YYYY-MM-DD') AS month, SUM(sessions)::bigint AS value
-         FROM reports.traffic_daily WHERE source = $1 AND site = $2 AND channel = $3 AND event_date >= $4 GROUP BY 1`,
-        [source, site, channel, from]
-    );
+    const { source, channel, engine } = SERIES[series];
+    const values = engine
+        ? await db.query(
+            `SELECT to_char(date_trunc('month', event_date), 'YYYY-MM-DD') AS month, SUM(sessions)::bigint AS value
+             FROM reports.traffic_organic_engine WHERE source = $1 AND site = $2 AND engine = $3 AND event_date >= $4 GROUP BY 1`,
+            [source, site, engine, from])
+        : await db.query(
+            `SELECT to_char(date_trunc('month', event_date), 'YYYY-MM-DD') AS month, SUM(sessions)::bigint AS value
+             FROM reports.traffic_daily WHERE source = $1 AND site = $2 AND channel = $3 AND event_date >= $4 GROUP BY 1`,
+            [source, site, channel, from]);
     const cover = await db.query(
         `SELECT to_char(date_trunc('month', event_date), 'YYYY-MM-DD') AS month, COUNT(DISTINCT event_date)::int AS days
          FROM reports.traffic_daily WHERE source = $1 AND site = $2 AND event_date >= $3 GROUP BY 1 ORDER BY 1`,
@@ -332,6 +342,7 @@ async function main() {
         const allSeries = [...Object.keys(SERIES), ...demandProducts];
         let seriesList = allSeries;
         if (seriesArg === 'demand') seriesList = demandProducts;
+        else if (seriesArg === 'engines') seriesList = Object.keys(SERIES).filter(k => SERIES[k].engine);
         else if (seriesArg) seriesList = [seriesArg];
 
         const trafficNote = `Данные с ${from} (разделение ru/en). Сезоны по 12 мес., база = общие для всех сезонов полные месяцы; неполные месяцы и аномалии исключены`;
@@ -351,6 +362,10 @@ async function main() {
                     ? await loadDemandRows(db, series.slice('demand_'.length))
                     : await loadRows(db, series, site, from);
                 if (!rows.length) { console.warn(`\n${series}/${site}: нет данных ${isDemand ? '(спрос ещё не собран: scripts/wordstat-product-demand.js)' : `в reports.traffic_daily с ${from}`}`); continue; }
+                if (!isDemand && SERIES[series].engine && rows.every(r => r.value === 0)) {
+                    console.warn(`\n${series}/${site}: нет данных по поисковой системе ${SERIES[series].engine} (сначала: node scripts/traffic-organic-engines.js)`);
+                    continue;
+                }
                 if (!isDemand && rows.every(r => r.value === 0)) {
                     console.warn(`\n${series}/${site}: канал "${SERIES[series].channel}" не найден. Реальные каналы:`);
                     const ch = await db.query('SELECT DISTINCT channel FROM reports.traffic_daily WHERE source = $1 AND site = $2', [SERIES[series].source, site]);
