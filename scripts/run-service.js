@@ -275,9 +275,18 @@ async function main() {
             results.set(serviceName, { success: true, stats });
             console.log(`✅ ${serviceName.toUpperCase()} завершен успешно`);
 
-            // После GSC сразу категоризируем все новые запросы в common.requests.
-            // Сбой категоризации не валит сбор (данные GSC уже сохранены).
+            // После GSC сначала переносим новые тексты запросов в common.requests
+            // (сам сбор GSC этого не делает — только gsc.search_console/site_map),
+            // затем категоризируем. Сбой любого из шагов не валит сбор (данные
+            // GSC уже сохранены).
             if (serviceName === 'gsc') {
+                try {
+                    console.log('🔄 Синк новых запросов в common.requests...');
+                    await require('./sync-gsc-requests').syncMissingRequests();
+                } catch (syncError) {
+                    console.error(`⚠️ Синк common.requests не выполнен: ${syncError.message}`);
+                }
+
                 try {
                     console.log('🏷️ Категоризация common.requests...');
                     await require('./categorize-requests').runCategorization();
