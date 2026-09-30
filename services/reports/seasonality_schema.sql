@@ -56,3 +56,10 @@ CREATE TABLE IF NOT EXISTS reports.seasonality_index (
 COMMENT ON TABLE reports.seasonality_index IS 'Сезонный индекс: среднее в день за месяц / база его сезона (среднее в день), усреднённое по сезонам. Данные с 2024-09-16 (разделение сайтов ru/en, более ранние несопоставимы). Сезон = 12 месяцев подряд от первого полного месяца; база = среднее по месяцам, пригодным во ВСЕХ учитываемых сезонах. Не входят: неполные месяцы (в т.ч. текущий), сезоны с недостаточным числом месяцев, аномальные месяцы (авто + reports.seasonality_events). seasons_used = 1 — разовое наблюдение, а не среднее.';
 COMMENT ON COLUMN reports.seasonality_index.seasons_used IS 'Сколько сезонов вошло в среднее. 1 = разовое наблюдение, индекс ориентировочный.';
 COMMENT ON COLUMN reports.seasonality_monthly.status IS 'used — участвует; incomplete_month — месяц неполный (текущий, начало периода или пропуски дней); incomplete_season — в сезоне мало пригодных месяцев; anomaly_auto — отклонение от соседних месяцев; anomaly_manual — из reports.seasonality_events';
+
+-- Миграции колонок, добавленных после первой версии таблиц (CREATE TABLE IF NOT EXISTS
+-- не меняет уже существующую таблицу). Идемпотентно.
+ALTER TABLE reports.seasonality_monthly ADD COLUMN IF NOT EXISTS value_per_day NUMERIC;
+ALTER TABLE reports.seasonality_monthly ADD COLUMN IF NOT EXISTS season TEXT;
+ALTER TABLE reports.seasonality_monthly ADD COLUMN IF NOT EXISTS season_baseline NUMERIC;
+ALTER TABLE reports.seasonality_events ADD COLUMN IF NOT EXISTS applies_to TEXT NOT NULL DEFAULT 'traffic';
