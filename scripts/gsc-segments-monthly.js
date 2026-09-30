@@ -40,8 +40,8 @@ async function main() {
 
         const res = await db.query(
             `SELECT to_char(month, 'YYYY-MM') AS m, segment, clicks_per_day, clicks_share_pct, avg_position, days_with_data, days_in_month
-             FROM reports.v_gsc_segment_share WHERE month >= date_trunc('month', $1::date) ORDER BY month DESC, segment LIMIT 24`, [from]);
-        console.log('\nПоследние месяцы (клики в день, доля, позиция):');
+             FROM reports.v_gsc_segment_share WHERE month >= date_trunc('month', $1::date) ORDER BY month, segment`, [from]);
+        console.log('\nВсе месяцы (клики в день, доля, позиция):');
         for (const r of res.rows) {
             const partial = r.days_with_data < r.days_in_month ? `  ⚠ данные за ${r.days_with_data} из ${r.days_in_month} дней` : '';
             console.log(`  ${r.m}  ${String(r.segment).padEnd(14)} ${String(r.clicks_per_day).padStart(6)}/день  ${String(r.clicks_share_pct).padStart(5)}%  поз. ${r.avg_position}${partial}`);
