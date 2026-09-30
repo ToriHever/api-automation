@@ -400,6 +400,73 @@ UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters 
 WHERE cluster_id IS NULL AND request ~* '^(\s*(ddos|дудос|ддос|атаками|атаку|атаке|атаки|атака|атак|dos|досс|доос|дос|d o s|дедос|дидос|додос|дудокс|ataka|doss|дудоса|д дос|attack|atack|атакой|атакам|ддс|мдос|дтос|dds|dudos|дэдос|doc|do dos|досить|ддосить|доус|отказ в обслуживании)\s*)+$';
 
 -- ============================================================
+-- Доп. слой кластеров (самый низкий приоритет): запросы, которым не подошло ни
+-- одно правило выше. Идёт ПОСЛЕ всех остальных, трогает только cluster_id IS NULL.
+--   - коммерческие слова, не попавшие выше ('аренда', 'услуги');
+--   - хабы 'Бренд'/'Бренд Конкурент' -> 'Защита' (вендор защиты);
+--   - короткие ddos-запросы вида 'ddos <слово>': софт/цели/действие/новости/
+--     защита/как работает/виды/справка/'Заказ атаки?' (ddos + объект) по словарю;
+--   - 'ddos' + 'атака' без остального -> 'Общее понятие DDoS';
+--   - НЕ-ddos тематические запросы (шифрование данных, udp, ошибка 404, sql-
+--     инъекция, тест Тьюринга и т.п.), у которых есть хаб, но нет интента ->
+--     'Справка / Терминология' (название темы = запрос справки).
+-- Запросы без хаба и без ddos (мусор вида '95', 'да') остаются без кластера.
+-- ============================================================
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Цены')
+WHERE cluster_id IS NULL AND request ~* '(\mаренд\w*)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Готовое решение')
+WHERE cluster_id IS NULL AND request ~* '(\mуслуг\w*|\mрешения\M)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Защита')
+WHERE cluster_id IS NULL AND hub_id IN (SELECT hub_id FROM common.hubs WHERE hub_name IN ('Бренд', 'Бренд Конкурент'));
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Цели: IP/Телефон/Сеть)')
+WHERE cluster_id IS NULL AND request ~* '(\mбанк\w*|\mвтб\M|\mмтс\M|\mростелеком\w*|\mркн\M|\mроскомнадзор\w*|\mяндекс\w*|\mvk\M|\mвк\M|\mdiscord\M|\msteam\M|\mtelegram\M|\mтелеграм\w*|\mпочт\w*|\mтелефон\w*|\mкомпьютер\w*|\mпк\M|\mлокальн\w*|\mнаселени\w*|\mbluetooth\M|\mблютуз\w*|\mномер\w*|\mмосква\M|\mроссии\M|\mрф\M|\mднр\M|\mросто\w*|\mбуденновск\w*|\mгазпром\w*|\mкомпани\w*|\mорганизаци\w*|\mчеловек\w*|\mtorrent\M|\mторрент\w*|\mкурс\w*)'
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Софт/Скрипты)')
+WHERE cluster_id IS NULL AND request ~* '(\msoft\M|\mсофт\w*|\mtools?\M|\mkali\M|\mlinux\M|\mubuntu\M|\mwindows\M|\mandroid\M|\mандроид\w*|\mpanel\M|\mпанел\w*|\mpy\M|\mpython\M|\mpypi\M|\mgithub\M|\mgit\M|\mexe\M|\mstress\w*|\mbooster\M|\mloic\M|\mhoic\M|\mhulk\M|\mfsociety\M|\mlois\M|\mapi\M|\mcode\M|\mкод\w*|\mскрипт\w*|\mscripts?\M|\mmanager\M|\mbox\M|\mkiller\M|\mc2\M|\mbypass\M|\mdownload\M|\mclient\M|\mклиент\w*|\mпрограмм\w*|\mприложени\w*|\mbot\M|\mтроян\w*|\mtrojan\M|\mкоманд\w*|\mpro\M|\mmethods?\M|\mвирус\w*|\mdiscord\M|\mтелеграм\w*|\mtelegram\M|\mmanager\M|\mssh\M|\mchrome\M|\mapache\M|\mnginx\M|\mreact\M)'
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Действие/Намерение)')
+WHERE cluster_id IS NULL AND request ~* '(\mустро\w*|\mорганиз\w*|\mсовершить\w*|\mсоздать\w*|\mсоздани\w*|\mзапустить\w*|\mделаем\w*|\mатаковать\w*|\mвзлом\w*|\mможно ли\M|\mнужен\M|\mпомогу\M|\mоткрыть\M|\mвыбор\M|\mвакансии\M|\mобучение\M)'
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Новости')
+WHERE cluster_id IS NULL AND request ~* '(\mзафиксирован\w*|\mидет\M|\mидёт\M|\mпроизошел\M|\mпроизошла\M|\mкрупн\w*|\mмассов\w*|\mмассирован\w*|\mмасштабн\w*|\mмощн\w*|\mмощь\M|\mсамый\M|\mсамые\M|\mпервая\M|\mпервый\M|\mистория\M|\mстатистика\M|\mрейтинг\M|\mсписки\M|\mсколько длится\w*|\mнаказание\M|\mсообщение\M|\mсегодня\M|\mбыла\M)'
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Защита')
+WHERE cluster_id IS NULL AND request ~* '(\mdetect\M|\mобнаружени\w*|\mопределить\w*|\mмониторинг\w*|\mmitigation\M|\mprevention\M|\mprevent\w*|\mнейтрализаци\w*|\mпредотвращени\w*|\mblocker\M|\mfirewall\M|\msecurity\M|\mнастройк\w*|\mlimit\M|\mretarding\M|\mids\M|\mпроблема\M|\mpfsense\M|\musergate\M|\mkaspersky\M|\mqrator\M|\mgarda\M|\mгарда\M|\mсолар\w*|\msolar\M|\mкоролев\w*|\mконтур\M)'
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Как работает')
+WHERE cluster_id IS NULL AND request ~* '(\mпринцип\w*|\mсуть\M|\mсхема\M|\mисточники\M|\mиспользуется\M|\mкак работает\w*)'
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Виды')
+WHERE cluster_id IS NULL AND request ~* '(\mтип\w*|\mметоды\M|\mметод\M|\mклассификаци\w*|\mвиды\M|\mразличие\M)'
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Справка / Терминология')
+WHERE cluster_id IS NULL AND request ~* '(\mаббревиатура\M|\mопределение\M|\mаббревиатур\w*|\mназывается\M)'
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Заказ атаки?')
+WHERE cluster_id IS NULL AND request ~* '(\mсет[ьиюе]\M|\mсеть\M|\mинтернет\w*|\mvpn\M|\mproxy\M|\mпрокси\M|\mweb\M|\mhttps?\M|\mudp\M|\mtcp\M|\msyn\M|\mport\M|\mтрафик\w*|\mоборудовани\w*|\mхостинг\w*|\mhost\w*|\mhosting\M|\mcloud\M|\mоблачн\w*|\mигр\w*|\mgames?\M|\mмайнкрафт\w*|\mroblox\M|\mcs\M|\msamp\M|\mdns\M|\mwaf\M|\mtest\w*|\mтест\w*|\mflood\M|\mсервер\w*|\mkeenetic\M|\mбитрикс\M|\mxss\M|\mсайт\w*|\mудал\w* доступ\w*|\mamnezia\M|\mispmanager\M|\mбесплатн\w*|\mзапросы\M|\mip\M|\mvps\M|\mсписк\w*|\mточк\w*|\mроутер\w*)'
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Общее понятие DDoS')
+WHERE cluster_id IS NULL AND request ~* '\mатак\w*'
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)';
+
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Справка / Терминология')
+WHERE cluster_id IS NULL AND hub_id IS NOT NULL
+  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)';
+
+-- ============================================================
 -- ЧАСТЬ 2: topic_id (столбец 'Тема или Интент' в исходном файле)
 -- Порядок приоритета:
 --   1. Сброс topic_id='ddos атака' — безусловно каждый прогон (нижний приоритет
