@@ -317,6 +317,9 @@ FROM wordstat.check_list cl
 JOIN common.requests r ON r.request_id = cl.request_id
 WHERE cl.method = 'dynamics' AND cl.is_active = true
 ORDER BY cl.category, r.request;
+
+-- Сводка: сколько в отслеживании / не в отслеживании по commercial/content/top
+SELECT * FROM wordstat.v_check_list_summary;
 ```
 
 `category` (`commercial`/`content`) — только для `method='dynamics'`, задаёт

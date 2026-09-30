@@ -93,3 +93,23 @@ CREATE TRIGGER update_check_list_updated_at
     BEFORE UPDATE ON wordstat.check_list
     FOR EACH ROW
     EXECUTE FUNCTION wordstat.update_updated_at_column();
+
+-- ============================================
+-- v_check_list_summary — сколько запросов активно/неактивно по commercial/
+-- content/top (см. "Проверка статуса отслеживания" в README).
+-- ============================================
+
+CREATE OR REPLACE VIEW wordstat.v_check_list_summary AS
+SELECT
+    CASE
+        WHEN method = 'dynamics' AND category = 'commercial' THEN 'commercial'
+        WHEN method = 'dynamics' AND category = 'content'    THEN 'content'
+        WHEN method = 'top'                                   THEN 'top'
+        ELSE 'other'
+    END AS bucket,
+    COUNT(*) FILTER (WHERE is_active)     AS active_count,
+    COUNT(*) FILTER (WHERE NOT is_active) AS inactive_count,
+    COUNT(*)                              AS total_count
+FROM wordstat.check_list
+GROUP BY 1
+ORDER BY 1;
