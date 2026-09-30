@@ -29,12 +29,13 @@ CREATE TABLE IF NOT EXISTS reports.seasonality_monthly (
     series TEXT NOT NULL,             -- seo_traffic_ga4 | seo_traffic_metrika | demand_<продукт>
     site TEXT NOT NULL,               -- ru | en
     month DATE NOT NULL,              -- первое число месяца
-    value BIGINT NOT NULL,            -- органические сессии/визиты за месяц
+    value BIGINT NOT NULL,            -- органические сессии/визиты за месяц (сумма)
+    value_per_day NUMERIC,            -- среднее в день = value / число дней месяца (по нему считаются индексы)
     status TEXT NOT NULL,             -- used | incomplete_month | incomplete_season | anomaly_auto | anomaly_manual
     note TEXT,
     season TEXT,                      -- начало сезона (12 мес. подряд), например 2024-10
-    season_baseline NUMERIC,          -- среднее сезона по общим для всех сезонов месяцам
-    month_index NUMERIC,              -- value / season_baseline (только для status = used)
+    season_baseline NUMERIC,          -- среднее В ДЕНЬ по общим для всех сезонов месяцам
+    month_index NUMERIC,              -- value_per_day / season_baseline (только для status = used)
     computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (series, site, month)
 );
@@ -52,6 +53,6 @@ CREATE TABLE IF NOT EXISTS reports.seasonality_index (
     PRIMARY KEY (series, site, month_num)
 );
 
-COMMENT ON TABLE reports.seasonality_index IS 'Сезонный индекс: значение месяца / база его сезона, усреднённое по сезонам. Данные с 2024-09-16 (разделение сайтов ru/en, более ранние несопоставимы). Сезон = 12 месяцев подряд от первого полного месяца; база = среднее по месяцам, пригодным во ВСЕХ учитываемых сезонах. Не входят: неполные месяцы (в т.ч. текущий), сезоны с недостаточным числом месяцев, аномальные месяцы (авто + reports.seasonality_events). seasons_used = 1 — разовое наблюдение, а не среднее.';
+COMMENT ON TABLE reports.seasonality_index IS 'Сезонный индекс: среднее в день за месяц / база его сезона (среднее в день), усреднённое по сезонам. Данные с 2024-09-16 (разделение сайтов ru/en, более ранние несопоставимы). Сезон = 12 месяцев подряд от первого полного месяца; база = среднее по месяцам, пригодным во ВСЕХ учитываемых сезонах. Не входят: неполные месяцы (в т.ч. текущий), сезоны с недостаточным числом месяцев, аномальные месяцы (авто + reports.seasonality_events). seasons_used = 1 — разовое наблюдение, а не среднее.';
 COMMENT ON COLUMN reports.seasonality_index.seasons_used IS 'Сколько сезонов вошло в среднее. 1 = разовое наблюдение, индекс ориентировочный.';
 COMMENT ON COLUMN reports.seasonality_monthly.status IS 'used — участвует; incomplete_month — месяц неполный (текущий, начало периода или пропуски дней); incomplete_season — в сезоне мало пригодных месяцев; anomaly_auto — отклонение от соседних месяцев; anomaly_manual — из reports.seasonality_events';

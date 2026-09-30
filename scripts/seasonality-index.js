@@ -71,6 +71,10 @@ const monthIdx = s => { const { y, m } = parseMonth(s); return y * 12 + m - 1; }
  * rows:   [{ month: 'YYYY-MM-01', value: number, complete: boolean }]
  * events: [{ month_from, month_to, action: 'exclude'|'keep', description }] — уже отфильтрованы по сайту
  */
+// Индексы считаются по среднему в день (value / число дней месяца): иначе февраль и 31-дневные
+// месяцы дают до ~10% ложной «сезонности». Если perDay не задан — берётся value как есть.
+const v = r => (r.perDay !== undefined ? r.perDay : r.value);
+
 function computeSeasonality(rows, events, { minMonths = 10 } = {}) {
     const byIdx = new Map(rows.map(r => [monthIdx(r.month), r]));
     const status = new Map();   // month -> { status, note }
@@ -92,14 +96,14 @@ function computeSeasonality(rows, events, { minMonths = 10 } = {}) {
         for (let d = 1; d <= NEIGHBORS; d++) {
             for (const j of [i - d, i + d]) {
                 const n = byIdx.get(j);
-                if (n && n.complete) neigh.push(n.value);
+                if (n && n.complete) neigh.push(v(n));
             }
         }
         if (neigh.length < 2) continue;
         const base = median(neigh);
         if (base <= 0) continue;
-        if (r.value === 0) { devs.push({ month: r.month, d: -Infinity }); continue; }
-        devs.push({ month: r.month, d: Math.log(r.value / base) });
+        if (v(r) === 0) { devs.push({ month: r.month, d: -Infinity }); continue; }
+        devs.push({ month: r.month, d: Math.log(v(r) / base) });
     }
     const finite = devs.filter(x => Number.isFinite(x.d)).map(x => x.d);
     if (finite.length >= 4) {
@@ -152,7 +156,7 @@ function computeSeasonality(rows, events, { minMonths = 10 } = {}) {
     const baseBySeason = new Map();
     if (common && common.size) {
         for (const k of included) {
-            const vals = usableBySeason.get(k).filter(r => common.has(parseMonth(r.month).m)).map(r => r.value);
+            const vals = usableBySeason.get(k).filter(r => common.has(parseMonth(r.month).m)).map(r => v(r));
             const b = mean(vals);
             if (b > 0) baseBySeason.set(k, b);
         }
@@ -172,12 +176,12 @@ function computeSeasonality(rows, events, { minMonths = 10 } = {}) {
         } else if (base === null) {
             out = { status: 'incomplete_season', note: `сезон с ${seasonLabel(k)} не набрал ${minMonths} пригодных месяцев — не участвует в расчёте`, idx: null };
         } else {
-            out = { status: 'used', note: null, idx: r.value / base };
+            out = { status: 'used', note: null, idx: v(r) / base };
             if (!byMonthNum.has(m)) byMonthNum.set(m, []);
             byMonthNum.get(m).push({ season: seasonLabel(k), idx: out.idx });
         }
         monthly.push({
-            month: r.month, value: r.value, status: out.status, note: out.note,
+            month: r.month, value: r.value, value_per_day: v(r), status: out.status, note: out.note,
             season: k >= 0 ? seasonLabel(k) : null,
             season_baseline: base, month_index: out.idx
         });
@@ -225,7 +229,8 @@ async function loadRows(db, series, site, from) {
         value: val.get(c.month) || 0,
         complete: c.month < currentMonth && c.days === daysInMonth(c.month),
         days: c.days,
-        daysTotal: daysInMonth(c.month)
+        daysTotal: daysInMonth(c.month),
+        perDay: (val.get(c.month) || 0) / daysInMonth(c.month)
     }));
 }
 
@@ -244,7 +249,8 @@ async function loadDemandRows(db, product) {
     return res.rows.map(r => ({
         month: r.month,
         value: Number(r.value),
-        complete: r.month < currentMonth && r.phrases === maxPhrases
+        complete: r.month < currentMonth && r.phrases === maxPhrases,
+        perDay: Number(r.value) / daysInMonth(r.month)
     }));
 }
 
@@ -255,9 +261,9 @@ async function save(db, series, site, result, note) {
         await db.query('DELETE FROM reports.seasonality_index WHERE series = $1 AND site = $2', [series, site]);
         for (const r of result.monthly) {
             await db.query(
-                `INSERT INTO reports.seasonality_monthly (series, site, month, value, status, note, season, season_baseline, month_index)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-                [series, site, r.month, r.value, r.status, r.note, r.season, r.season_baseline, r.month_index]
+                `INSERT INTO reports.seasonality_monthly (series, site, month, value, value_per_day, status, note, season, season_baseline, month_index)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                [series, site, r.month, r.value, r.value_per_day, r.status, r.note, r.season, r.season_baseline, r.month_index]
             );
         }
         for (const r of result.index) {
@@ -292,6 +298,16 @@ function printResult(series, site, result) {
     console.log(result.index.map(r =>
         `  ${String(r.month_num).padStart(2)}: ${r.seasonal_index === null ? '  —  ' : r.seasonal_index.toFixed(2)}  (сезонов: ${r.seasons_used}${r.seasons_list ? ' ' + r.seasons_list : ''})`
     ).join('\n'));
+    const levels = new Map();
+    for (const r of result.monthly) if (r.season && r.season_baseline) levels.set(r.season, r.season_baseline);
+    if (levels.size > 1) {
+        const arr = [...levels.entries()].sort();
+        console.log('Уровень сезонов (среднее в день по общим месяцам): ' + arr.map(([k, b]) => `${k}: ${b.toFixed(1)}`).join(' → '));
+        for (let i = 1; i < arr.length; i++) {
+            const ch = arr[i][1] / arr[i - 1][1] - 1;
+            if (Math.abs(ch) > 0.15) console.log(`⚠ Уровень сезона ${arr[i][0]} отличается от предыдущего на ${(ch * 100).toFixed(0)}% — тренд искажает сезонный индекс (сезонность и тренд неразличимы на двух сезонах).`);
+        }
+    }
     const weak = result.index.filter(r => r.seasons_used <= 1).map(r => r.month_num);
     if (weak.length) console.log(`⚠ Месяцы ${weak.join(', ')}: индекс по одному сезону (или нет данных) — разовое наблюдение, не среднее.`);
 }
