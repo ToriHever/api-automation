@@ -114,6 +114,36 @@ node scripts/traffic-history-36m.js --source metrika --months 12
 - Данные ru начинаются с ~середины 2024 (в GA4 и Метрике), en — с 2023-10. Периоды Метрики с `sampled=true` — оценки, округляются до целых.
 - Если в оболочке сервера экспортирована переменная-заглушка (например `YANDEX_METRIKA_COUNTER_ID=your_counter_id`), `dotenv` не перезапишет её значением из `.env` — сделать `unset`.
 
+## 📊 Сезонные индексы органического трафика (основа «Нормы трафика SEO»)
+```bash
+# Считает индексы по reports.traffic_daily, пишет в reports.seasonality_monthly и reports.seasonality_index
+node scripts/seasonality-index.js
+
+# Только посмотреть результат, ничего не записывая
+node scripts/seasonality-index.js --dry-run
+
+# Один ряд / сайт
+node scripts/seasonality-index.js --series seo_traffic_ga4 --site ru
+```
+Метод: индекс месяца = значение месяца / среднемесячное за календарный год, затем усреднение одноимённых месяцев по годам (1.00 = средний уровень).
+Ряды: `seo_traffic_ga4` (основной, канал `Organic Search`) и `seo_traffic_metrika` (для сверки, «Переходы из поисковых систем»).
+
+**Что НЕ входит в расчёт (явное правило, не менять молча):**
+- текущий неполный месяц и месяцы с пропусками дней в `traffic_daily`;
+- календарные годы, где нет 12 полных месяцев (порог `--min-months`, по умолчанию 12) — такие месяцы получают статус `incomplete_year`;
+- аномальные месяцы: автоматически (отклонение от медианы 2+2 соседних месяцев больше max(30% в ln, 3.5 робастных сигмы по MAD)) и по ручному списку `reports.seasonality_events`.
+
+Ручной список — обычная таблица, код менять не нужно:
+```sql
+-- исключить месяц (site NULL = оба сайта)
+INSERT INTO reports.seasonality_events (site, month_from, month_to, action, description)
+VALUES (NULL, '2025-03-01', '2025-03-01', 'exclude', 'Апдейт Яндекса');
+-- оставить месяц, который авто-проверка ошибочно пометила аномальным
+INSERT INTO reports.seasonality_events (site, month_from, month_to, action, description)
+VALUES ('ru', '2024-12-01', '2024-12-01', 'keep', 'Это реальный сезонный пик');
+```
+После правки списка перезапустить скрипт. В `reports.seasonality_index.years_used` видно, на скольких годах посчитан индекс; `years_used = 1` — разовое наблюдение, а не среднее.
+
 ## ⏰ Автоматизация через cron
 ### Прямой запуск bash-скриптов
 
