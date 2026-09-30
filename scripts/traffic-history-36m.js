@@ -166,7 +166,8 @@ async function fetchMetrika(siteKey, range) {
 
             const r = data.data || [];
             for (const row of r) {
-                const m = row.metrics;
+                // при sampled=true Метрика отдаёт оценки с дробной частью — колонки целочисленные
+                const m = row.metrics.map(Math.round);
                 rows.push({
                     event_date: row.dimensions[0].name,
                     channel: row.dimensions[1].name,
