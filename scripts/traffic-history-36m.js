@@ -39,7 +39,8 @@ function arg(name, def) {
     return i > -1 ? process.argv[i + 1] : def;
 }
 
-const fmt = d => d.toISOString().slice(0, 10);
+// Локальные компоненты даты: toISOString() в поясе UTC+3 сдвигает полночь на предыдущий день
+const fmt = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // Период: с 1-го числа месяца N месяцев назад по вчера
