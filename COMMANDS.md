@@ -87,6 +87,11 @@ node scripts/migrate-db.js
 
 # Запуск всех сервисов (альтернативный скрипт)
 node scripts/run-all.js
+
+# Категоризация common.requests (cluster/topic/hub по ключевым словам).
+# Идемпотентно — трогает только строки с NULL. Автоматически запускается
+# после успешного сбора GSC (scripts/run-service.js).
+npm run categorize
 ```
 
 ## ⏰ Автоматизация через cron

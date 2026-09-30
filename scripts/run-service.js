@@ -274,7 +274,18 @@ async function main() {
             
             results.set(serviceName, { success: true, stats });
             console.log(`✅ ${serviceName.toUpperCase()} завершен успешно`);
-            
+
+            // После GSC сразу категоризируем все новые запросы в common.requests.
+            // Сбой категоризации не валит сбор (данные GSC уже сохранены).
+            if (serviceName === 'gsc') {
+                try {
+                    console.log('🏷️ Категоризация common.requests...');
+                    await require('./categorize-requests').runCategorization();
+                } catch (catError) {
+                    console.error(`⚠️ Категоризация не выполнена: ${catError.message}`);
+                }
+            }
+
         } catch (error) {
             console.error(`❌ Ошибка в сервисе ${serviceName.toUpperCase()}:`, error.message);
             results.set(serviceName, { success: false, error });
