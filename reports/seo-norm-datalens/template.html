@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Норма трафика SEO — ddos-guard.ru</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap">
+<style>
+/*__TOKENS_CSS__*/
+/*__DASHBOARD_CSS__*/
+
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--dl-color-dashboard-background); }
+body { font-family: var(--g-font-family-sans); }
+.dashboard { min-height: 100vh; max-width: 1280px; margin: 0 auto; }
+.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: var(--g-spacing-2); }
+.sub { color: var(--g-color-text-secondary); font: var(--g-text-body-1-font); }
+
+.grid { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: var(--g-spacing-2); margin-top: var(--g-spacing-2); }
+.s3 { grid-column: span 3; } .s4 { grid-column: span 4; } .s5 { grid-column: span 5; } .s9 { grid-column: span 9; }
+.dashboard-widget { min-width: 0; }
+.w-title { font: var(--g-text-body-2-font); margin: 0; }
+.w-cap { color: var(--g-color-text-secondary); font: var(--g-text-body-1-font); margin: 2px 0 0; }
+
+.filters { display: flex; flex-wrap: wrap; gap: var(--g-spacing-2); align-items: center; }
+.seg { display: inline-flex; flex-wrap: wrap; background: var(--g-color-base-generic); border-radius: 8px; padding: 2px; gap: 2px; }
+.seg button { font: var(--g-text-body-1-font); color: var(--g-color-text-primary); background: transparent; border: 0; border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--dl-color-widget-background); box-shadow: 0 0 0 1px var(--g-color-line-generic); }
+button:focus-visible { outline: 2px solid var(--g-color-line-focus); outline-offset: 1px; }
+
+.kpi .k { color: var(--g-color-text-secondary); font: var(--g-text-body-1-font); }
+.kpi .v { font-size: 28px; line-height: 34px; font-weight: 500; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.kpi .d { margin-top: 6px; font: var(--g-text-body-1-font); font-variant-numeric: tabular-nums; color: var(--g-color-text-secondary); }
+.badge { display: inline-block; padding: 1px 6px; border-radius: 4px; margin-right: 6px; }
+.badge.pos { color: var(--g-color-text-positive); background: var(--g-color-base-positive-light); }
+.badge.neg { color: var(--g-color-text-danger); background: var(--g-color-base-danger-light); }
+.badge.neu { color: var(--g-color-text-secondary); background: var(--g-color-base-generic); }
+
+.chart-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: var(--g-spacing-2); }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { fill: var(--g-color-text-secondary); font: var(--g-text-caption-2-font); font-variant-numeric: tabular-nums; }
+.grid-line { stroke: var(--g-color-line-generic); stroke-width: 1; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; font: var(--g-text-body-1-font); color: var(--g-color-text-secondary); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.tip { position: absolute; pointer-events: none; display: none; z-index: 2; padding: 8px 10px; border-radius: 8px; font: var(--g-text-body-1-font); background: var(--g-color-infographics-tooltip-bg); color: var(--g-color-text-primary); box-shadow: 0 0 0 1px var(--g-color-line-generic); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.tbl-wrap { overflow-x: auto; margin-top: var(--g-spacing-2); }
+table { width: 100%; border-collapse: collapse; font: var(--g-text-body-1-font); }
+th { font: var(--g-text-subheader-1-font); color: var(--g-color-text-primary); text-align: left; padding: 8px 10px; white-space: nowrap; border-bottom: 1px solid var(--g-color-line-generic); }
+td { padding: 7px 10px; border-bottom: 1px solid var(--g-color-line-generic); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.fc td { color: var(--g-color-text-secondary); }
+.pos-t { color: var(--g-color-text-positive); } .neg-t { color: var(--g-color-text-danger); }
+
+.text h3 { font: var(--g-text-subheader-2-font); margin: 14px 0 4px; }
+.text h3:first-child { margin-top: 0; }
+.text ul { margin: 0; padding-left: 20px; }
+.text li { margin: 4px 0; font: var(--g-text-body-1-font); line-height: 20px; }
+.text .warn, .kpi .warn { color: var(--g-color-text-warning); }
+.note { margin-top: var(--g-spacing-2); padding: 8px 12px; border-radius: 8px; font: var(--g-text-body-1-font); color: var(--g-color-text-warning); background: var(--g-color-base-warning-light); }
+.foot { color: var(--g-color-text-secondary); font: var(--g-text-caption-2-font); margin-top: var(--g-spacing-4); line-height: 16px; }
+
+@media (max-width: 768px) {
+  .grid > * { grid-column: span 9 !important; }
+  .dashboard { padding-left: var(--g-spacing-2); padding-right: var(--g-spacing-2); }
+}
+</style>
+</head>
+<body class="dashboard">
+  <div class="head">
+    <div>
+      <h1 class="dashboard-title" style="margin:0">Норма трафика SEO — ddos-guard.ru</h1>
+      <div class="sub" id="sub"></div>
+    </div>
+    <div class="filters"><div class="seg" id="series-seg" role="group" aria-label="Ряд"></div></div>
+  </div>
+  <div class="note" id="snap" style="display:none"></div>
+
+  <main class="grid">
+    <section class="dashboard-widget kpi s3" id="k-last"></section>
+    <section class="dashboard-widget kpi s3" id="k-avg"></section>
+    <section class="dashboard-widget kpi s3" id="k-next"></section>
+
+    <section class="dashboard-widget s9">
+      <div class="chart-head">
+        <div><h2 class="w-title" id="norm-title"></h2><p class="w-cap" id="norm-cap"></p></div>
+      </div>
+      <div class="chart" id="norm-chart"></div>
+      <div class="legend" id="norm-legend"></div>
+    </section>
+
+    <section class="dashboard-widget s5">
+      <h2 class="w-title">Отклонение от нормы по месяцам</h2>
+      <p class="w-cap">Факт в день к норме в день, %. Линии — границы коридора нормы</p>
+      <div class="chart" id="dev-chart" style="margin-top:8px"></div>
+    </section>
+
+    <section class="dashboard-widget s4">
+      <h2 class="w-title">Кто теряет: Google и Яндекс</h2>
+      <p class="w-cap">Органика ru, сессии в месяц (сплошные — GA4, пунктир — Метрика)</p>
+      <div class="chart" id="eng-chart" style="margin-top:8px"></div>
+      <div class="legend" id="eng-legend"></div>
+    </section>
+
+    <section class="dashboard-widget s9">
+      <h2 class="w-title">Состав Google-трафика по сегментам (GSC)</h2>
+      <p class="w-cap">Клики в день. Разрыв ряда между декабрём 2025 и январём 2026: главная стала показываться по брендовым запросам, до этого — случайные подстраницы. Сравнивать можно только внутри 2026 года</p>
+      <div class="chart" id="seg-chart" style="margin-top:8px"></div>
+      <div class="legend" id="seg-legend"></div>
+    </section>
+
+    <section class="dashboard-widget s9">
+      <h2 class="w-title" id="tbl-title"></h2>
+      <p class="w-cap">* — месяц исключён из расчёта нормы (падение 2026); † — неполный месяц. Прогноз — только норма. Уверенность «низкая» — индекс месяца по одному сезону; «индекс из Метрики» — у основного ряда нет пригодных наблюдений этого месяца</p>
+      <div class="tbl-wrap"><table id="tbl"></table></div>
+    </section>
+
+    <section class="dashboard-widget text s5">
+      <h2 class="w-title">Важные выводы</h2>
+      <h3>Что произошло</h3>
+      <ul>
+        <li>До марта 2026 органика ru (GA4) укладывается в норму: −2…+7%. С апреля ниже нормы: −15%, −18%, −31%, −20%, −9% (август, в коридоре), −31% (сентябрь). Метрика подтверждает: −16…−36%.</li>
+        <li>Падение реальное и не сезонное: его видят GA4, Метрика и GSC (небрендовые клики −63% с марта по сентябрь); в настройках тега GA4 с ноября 2025 по август 2026 изменений не было.</li>
+        <li>Основная потеря — Google (около 88% абсолютного падения сессий) и информационные страницы (блог, термины): клики −68% с апреля по август. Яндекс просел на 25–45% в апреле–июле и частично вернулся (август–сентябрь −4…−16% по Метрике).</li>
+        <li>Бренд стабилен (45–53 клика в день в GSC). Продуктовые небрендовые клики упали на ~45% (10–12 → 6,5 в день) — в абсолюте немного, но по доле заметно.</li>
+      </ul>
+      <h3>Как читать норму</h3>
+      <ul>
+        <li>Норма месяца = уровень × сезонный индекс × дни месяца. Уровень — среднее по 12 «здоровым» месяцам; апрель–сентябрь 2026 в него не входят.</li>
+        <li>Сезонность (ориентир): осень и март выше среднего, январь и лето ниже (июль–август около 0,7–0,8 по Метрике).</li>
+        <li>Норма ориентировочная: всего два сезона данных с 16.09.2024 (разделение ru/en); у апреля–июня и сентября индекс по одному сезону.</li>
+        <li>Для en и Яндекса по GA4 норма не строится: там тренд, а не сезонность (см. ниже).</li>
+      </ul>
+    </section>
+
+    <section class="dashboard-widget text s4">
+      <h2 class="w-title">Проблемы и ограничения данных</h2>
+      <ul>
+        <li>GA4 потерял данные 30.07–17.08.2025 (за июль–август 2025 неполные месяцы); индекс лета взят из Метрики.</li>
+        <li>GSC до августа 2025 неполный (~60 строк в день), сбои cron с октября 2025 по апрель 2026 (пропуски дней), разрыв бренда в январе 2026.</li>
+        <li>GA4 и Метрика расходятся по Google: отношение выросло с 1,31 до 1,81. По en разбивка Яндекс/Google различается в 2,4 раза.</li>
+        <li>Сентябрь 2026 неполный (29 из 30 дней).</li>
+        <li>Wordstat недоступен (403, оплата Yandex Cloud): спрос по продуктам не собран. Для en Wordstat не годится по природе (российский спрос).</li>
+        <li>Настройка окружения: заглушка <code>your_counter_id</code> в оболочке сервера перебивала <code>.env</code> (нужен <code>unset</code>).</li>
+      </ul>
+      <p class="w-cap" id="skipped-cap" style="margin-top:10px"></p>
+    </section>
+
+    <section class="dashboard-widget text s9">
+      <h2 class="w-title">Что осталось открытым</h2>
+      <ul>
+        <li><b>Причина падения органики ru с апреля 2026.</b> В заметках нет явного события; настройки GA4 не менялись; релизы: страница L3-4 (16.04), регистрация/вход (04.05), падение релевантности DS (18.05). Нужна проверка по страницам и запросам Google (Q2/Q4 в <code>services/reports/analysis/gsc_google_drop_2026.sql</code>) и, возможно, изменений выдачи.</li>
+        <li><b>Причина сбоя GA4 30.07–17.08.2025.</b> Нужна история версий контейнера GTM (в истории тега записей за этот период нет).</li>
+        <li><b>Брендовые клики GSC (+40 в день с января 2026)</b> не видны в GA4 и Метрике. Гипотеза: существующие клиенты идут на главную за входом в личный кабинет, и сессия теряется (редирект до загрузки счётчиков). Не проверено.</li>
+        <li><b>Спрос по продуктам (Wordstat)</b> ждёт оплаты Yandex Cloud: затем <code>node scripts/wordstat-product-demand.js</code>, индексы и норма для <code>--series demand</code>. Для en нужен другой источник спроса.</li>
+        <li><b>Расхождение GA4 и GSC по уровню</b> (клики GSC в 2026 против сессий GA4) и дрейф отношения GA4/Метрика по Google не разобраны.</li>
+        <li><b>en:</b> норма не строится, пока не накопится больше сезонов или не выяснится причина устойчивого снижения после разделения сайтов.</li>
+        <li>Норма — по двум сезонам: пересчитать через несколько месяцев, добавив новые.</li>
+      </ul>
+    </section>
+  </main>
+  <p class="foot" id="foot"></p>
+
+<script>
+// Data is INLINED at build time — the sandbox has no network.
+const DATA = /*__DATA__*/null;
+
+const params = new URLSearchParams(location.search);
+const requested = params.get('theme') || 'light';
+const media = matchMedia('(prefers-color-scheme: dark)');
+function applyTheme() {
+  const t = requested === 'system' ? (media.matches ? 'dark' : 'light') : (requested === 'dark' ? 'dark' : 'light');
+  const root = document.documentElement;
+  root.classList.add('g-root');
+  root.classList.remove('g-root_theme_light', 'g-root_theme_dark');
+  root.classList.add('g-root_theme_' + t);
+}
+applyTheme();
+if (requested === 'system') media.addEventListener('change', applyTheme);
+
+// ---- Formatting ----
+const nbsp = ' ';
+const MON = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+function fmtNum(n, digits = 0) {
+  if (n == null || !isFinite(n)) return '—';
+  const parts = Math.abs(n).toFixed(digits).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, nbsp);
+  return (n < 0 ? '−' : '') + parts.join(',');
+}
+const fmtSigned = (n, d = 0) => (n == null ? '—' : (n > 0 ? '+' : '') + fmtNum(n, d));
+const ymParts = (m) => m.split('-').map(Number);
+const mLabel = (m) => { const [y, mo] = ymParts(m); return MON[mo - 1] + ' ' + y; };
+const mShort = (m) => { const [y, mo] = ymParts(m); return MON[mo - 1] + ' ' + String(y).slice(2); };
+const mIdx = (m) => { const [y, mo] = ymParts(m); return y * 12 + mo - 1; };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const e = Math.pow(10, Math.floor(Math.log10(v))), f = v / e;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e;
+}
+
+const STATUS = { in_norm: 'в норме', below_norm: 'ниже нормы', above_norm: 'выше нормы', no_actual: 'нет факта', forecast: 'прогноз', no_norm: 'нет нормы' };
+const CONF = { normal: 'обычная', low: 'низкая (1 сезон)', fallback: 'индекс из Метрики', none: '—' };
+const inAnomaly = (m) => DATA.anomaly && m >= DATA.anomaly.from && m <= DATA.anomaly.to;
+const C = { p1: 'var(--dl-graph-palette-color-1)', p2: 'var(--dl-graph-palette-color-2)', p3: 'var(--dl-graph-palette-color-3)', p4: 'var(--dl-graph-palette-color-4)',
+  pos: 'var(--g-color-text-positive)', neg: 'var(--g-color-text-danger)', axis: 'var(--g-color-infographics-axis)' };
+
+// ---- State (memory only) ----
+const state = { series: DATA.series[0].key };
+const cur = () => DATA.series.find((s) => s.key === state.series) || DATA.series[0];
+
+function badge(delta, digits = 0) {
+  if (delta == null || !isFinite(delta)) return '<span class="badge neu">—</span>';
+  const good = delta >= 0;
+  return `<span class="badge ${good ? 'pos' : 'neg'}">${delta > 0 ? '▲' : delta < 0 ? '▼' : ''} ${fmtSigned(delta, digits)}%</span>`;
+}
+
+// SVG-путь с разрывами: points — массив {x,y}|null
+function pathOf(points) {
+  let d = '', open = false;
+  for (const p of points) {
+    if (!p) { open = false; continue; }
+    d += (open ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1);
+    open = true;
+  }
+  return d;
+}
+// Заливка коридора: непрерывные отрезки, верх вперёд, низ назад
+function bandPath(rows, x, y) {
+  let d = '', seg = [];
+  const flush = () => {
+    if (seg.length > 0) {
+      d += 'M' + seg.map((r) => x(r.i).toFixed(1) + ' ' + y(r.high).toFixed(1)).join('L')
+        + 'L' + seg.slice().reverse().map((r) => x(r.i).toFixed(1) + ' ' + y(r.low).toFixed(1)).join('L') + 'Z';
+    }
+    seg = [];
+  };
+  rows.forEach((r, i) => { if (r.low != null && r.high != null) seg.push({ i, low: r.low, high: r.high }); else flush(); });
+  flush();
+  return d;
+}
+
+// Общий каркас интерактивного графика: рисует svg-содержимое и вешает тултип по ближайшему индексу
+function mount(box, { W, H, ml, mr, mt, mb, n, svg, tipHtml }) {
+  const x = (i) => ml + (n === 1 ? 0 : i / (n - 1) * (W - ml - mr));
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img">${svg}
+    <line id="cross-${box.id}" y1="${mt}" y2="${H - mb}" stroke="var(--g-color-line-generic-solid)" style="display:none"/>
+    <rect id="hit-${box.id}" x="${ml}" y="${mt}" width="${W - ml - mr}" height="${H - mt - mb}" fill="transparent"/></svg><div class="tip" id="tip-${box.id}"></div>`;
+  const tip = document.getElementById('tip-' + box.id), cross = document.getElementById('cross-' + box.id), hit = document.getElementById('hit-' + box.id);
+  const scale = () => box.querySelector('svg').getBoundingClientRect().width / W;
+  hit.addEventListener('mousemove', (e) => {
+    const rect = box.querySelector('svg').getBoundingClientRect();
+    const px = (e.clientX - rect.left) / scale();
+    const i = Math.min(n - 1, Math.max(0, Math.round((px - ml) / (W - ml - mr) * (n - 1))));
+    cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.style.display = '';
+    tip.innerHTML = tipHtml(i); tip.style.display = 'block';
+    tip.style.left = Math.max(0, Math.min(x(i) * scale() + 12, box.clientWidth - tip.offsetWidth)) + 'px';
+    tip.style.top = '8px';
+  });
+  hit.addEventListener('mouseleave', () => { tip.style.display = 'none'; cross.style.display = 'none'; });
+}
+
+const partialNote = (m) => (DATA.partial && DATA.partial[m] ? ` · <span class="warn">неполный месяц: ${DATA.partial[m]}</span>` : '');
+
+// ---- Header / KPIs ----
+function renderHead() {
+  document.getElementById('sub').textContent = `ddos-guard.ru (ru) · данные на ${DATA.generated}${DATA.source === 'snapshot' ? ' · срез' : ''}`;
+  document.getElementById('series-seg').innerHTML = DATA.series.map((s) =>
+    `<button type="button" data-k="${esc(s.key)}" aria-pressed="${s.key === state.series}">${esc(s.label)}</button>`).join('');
+  const snap = document.getElementById('snap');
+  if (DATA.source === 'snapshot') { snap.style.display = 'block'; snap.textContent = DATA.note || 'Срез данных.'; }
+  document.getElementById('skipped-cap').innerHTML = (DATA.skipped && DATA.skipped.length)
+    ? '<b>Норма не строится:</b><br>' + DATA.skipped.map((s) => `• ${esc(s.label)} — ${esc(s.reason)}`).join('<br>') : '';
+  document.getElementById('foot').innerHTML =
+    'Формулы: норма/день = уровень × сезонный индекс; норма за месяц = норма/день × дни месяца; коридор = ±max(10%, 2 сигмы разброса «здоровых» месяцев). Данные: GA4 (Organic Search, hostName = ddos-guard.ru), Метрика (органика, домен входа), GSC (только https://ddos-guard.ru, без поддоменов). ' +
+    'Ряд GA4 за июль–август 2025 неполный (сбой сбора), сентябрь 2026 — 29 из 30 дней. Отчёт собран скриптами scripts/seasonality-index.js и scripts/seo-traffic-norm.js.';
+}
+function kpi(id, label, value, deltaHtml, note) {
+  document.getElementById(id).innerHTML = `<div class="k">${label}</div><div class="v">${value}</div><div class="d">${deltaHtml}${note || ''}</div>`;
+}
+function renderKpis() {
+  const rows = cur().rows;
+  const withActual = rows.filter((r) => !r.forecast && r.actual != null);
+  const last = withActual[withActual.length - 1];
+  if (last) {
+    kpi('k-last', 'Последний месяц: ' + mLabel(last.m), fmtNum(last.actual),
+      badge(last.dev, 0), `норма ${fmtNum(last.expected)} (${fmtNum(last.low)}–${fmtNum(last.high)}) · ${STATUS[last.status] || last.status}` + partialNote(last.m));
+  } else kpi('k-last', 'Последний месяц', '—', '', '');
+  const last3 = withActual.filter((r) => r.dev != null).slice(-3);
+  const avg = last3.length ? last3.reduce((a, r) => a + r.dev, 0) / last3.length : null;
+  kpi('k-avg', 'Среднее отклонение за 3 месяца', avg == null ? '—' : fmtSigned(avg, 0) + '%', '', last3.map((r) => mShort(r.m)).join(', '));
+  const next = rows.find((r) => r.forecast && r.actual == null && r.expected != null && (!last || mIdx(r.m) > mIdx(last.m)));
+  if (next) kpi('k-next', 'Норма на ' + mLabel(next.m), fmtNum(next.expected), '', `коридор ${fmtNum(next.low)}–${fmtNum(next.high)} · уверенность: ${CONF[next.conf] || next.conf}`);
+  else kpi('k-next', 'Норма на ближайший месяц', '—', '', '');
+}
+
+// ---- Main chart: факт против нормы ----
+function renderNorm() {
+  const s = cur(), rows = s.rows, n = rows.length;
+  document.getElementById('norm-title').textContent = s.label + ' — факт и норма по месяцам';
+  document.getElementById('norm-cap').textContent = `Уровень ${fmtNum(s.level, 1)} в день, коридор ±${fmtNum(s.band, 0)}%. Серая зона — месяцы, исключённые из расчёта нормы (падение 2026)`;
+  const box = document.getElementById('norm-chart');
+  const W = Math.max(box.clientWidth, 320), H = 320, ml = 52, mr = 10, mt = 10, mb = 34;
+  const vals = [];
+  rows.forEach((r) => { if (r.high != null) vals.push(r.high); if (r.actual != null) vals.push(r.actual); });
+  const max = niceMax(Math.max(...vals, 1) * 1.05);
+  const x = (i) => ml + (n === 1 ? 0 : i / (n - 1) * (W - ml - mr));
+  const y = (v) => mt + (1 - v / max) * (H - mt - mb);
+  const step = n > 1 ? (W - ml - mr) / (n - 1) : 20;
+  let g = '';
+  for (let i = 0; i <= 4; i++) { const v = max / 4 * i; g += `<line class="grid-line" x1="${ml}" x2="${W - mr}" y1="${y(v)}" y2="${y(v)}"/><text x="${ml - 6}" y="${y(v) + 4}" text-anchor="end">${fmtNum(v)}</text>`; }
+  g += `<line x1="${ml}" x2="${W - mr}" y1="${y(0)}" y2="${y(0)}" stroke="${C.axis}" stroke-width="1"/>`;
+  // зоны: исключённые месяцы и прогноз
+  rows.forEach((r, i) => {
+    if (inAnomaly(r.m)) g += `<rect x="${x(i) - step / 2}" y="${mt}" width="${step}" height="${H - mt - mb}" fill="var(--g-color-base-generic)" opacity="0.8"/>`;
+    else if (r.forecast && r.actual == null) g += `<rect x="${x(i) - step / 2}" y="${mt}" width="${step}" height="${H - mt - mb}" fill="var(--g-color-base-generic)" opacity="0.35"/>`;
+  });
+  const every = Math.ceil(n / 12);
+  rows.forEach((r, i) => { if (i % every === 0) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${mShort(r.m)}</text>`; });
+  g += `<path d="${bandPath(rows, x, y)}" fill="${C.p1}" opacity="0.18"/>`;
+  g += `<path d="${pathOf(rows.map((r, i) => (r.expected != null ? { x: x(i), y: y(r.expected) } : null)))}" fill="none" stroke="${C.p1}" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>`;
+  g += `<path d="${pathOf(rows.map((r, i) => (r.actual != null ? { x: x(i), y: y(r.actual) } : null)))}" fill="none" stroke="${C.p2}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  rows.forEach((r, i) => {
+    if (r.actual == null) return;
+    const col = r.status === 'below_norm' ? C.neg : r.status === 'above_norm' ? C.pos : C.p2;
+    g += `<circle cx="${x(i)}" cy="${y(r.actual)}" r="4" fill="${col}" stroke="var(--dl-color-widget-background)" stroke-width="1.5"/>`;
+  });
+  mount(box, { W, H, ml, mr, mt, mb, n, svg: g, tipHtml: (i) => {
+    const r = rows[i];
+    return `<div><b>${mLabel(r.m)}</b>${inAnomaly(r.m) ? ' · исключён из нормы' : ''}${r.forecast && r.actual == null ? ' · прогноз' : ''}</div>`
+      + `<div>Факт: ${fmtNum(r.actual)}</div><div>Норма: ${fmtNum(r.expected)} (${fmtNum(r.low)}–${fmtNum(r.high)})</div>`
+      + `<div>Отклонение: ${r.dev == null ? '—' : fmtSigned(r.dev, 1) + '%'} · ${STATUS[r.status] || r.status}</div>`
+      + `<div style="color:var(--g-color-text-secondary)">Индекс ${r.si == null ? '—' : fmtNum(r.si, 2)} · уверенность: ${CONF[r.conf] || r.conf}</div>`;
+  } });
+  document.getElementById('norm-legend').innerHTML =
+    `<span><i style="background:${C.p2}"></i>Факт (красные точки — ниже нормы)</span><span><i style="background:${C.p1};opacity:.5"></i>Норма и коридор</span>`
+    + `<span><i style="background:var(--g-color-base-generic)"></i>Исключённые месяцы / прогноз</span>`;
+}
+
+// ---- Отклонение от нормы ----
+function renderDev() {
+  const s = cur(), rows = s.rows.filter((r) => !r.forecast && r.dev != null), n = rows.length;
+  const box = document.getElementById('dev-chart');
+  if (!n) { box.innerHTML = '<p class="w-cap">Нет месяцев с фактом.</p>'; return; }
+  const W = Math.max(box.clientWidth, 280), H = 260, ml = 44, mr = 8, mt = 8, mb = 28;
+  const max = niceMax(Math.max(...rows.map((r) => Math.abs(r.dev)), s.band, 10) * 1.1);
+  const x = (i) => ml + (i + 0.5) / n * (W - ml - mr);
+  const y = (v) => mt + (1 - (v + max) / (2 * max)) * (H - mt - mb);
+  const bw = Math.max(3, (W - ml - mr) / n * 0.62);
+  let g = '';
+  for (const v of [-max, -max / 2, 0, max / 2, max]) g += `<line class="grid-line" x1="${ml}" x2="${W - mr}" y1="${y(v)}" y2="${y(v)}"/><text x="${ml - 6}" y="${y(v) + 4}" text-anchor="end">${fmtSigned(v, 0)}%</text>`;
+  g += `<line x1="${ml}" x2="${W - mr}" y1="${y(0)}" y2="${y(0)}" stroke="${C.axis}" stroke-width="1"/>`;
+  for (const b of [s.band, -s.band]) g += `<line x1="${ml}" x2="${W - mr}" y1="${y(b)}" y2="${y(b)}" stroke="${C.p1}" stroke-width="1" stroke-dasharray="4 3"/>`;
+  const every = Math.ceil(n / 8);
+  rows.forEach((r, i) => {
+    const col = r.status === 'below_norm' ? C.neg : r.status === 'above_norm' ? C.pos : C.p1;
+    const y0 = y(0), y1 = y(r.dev);
+    g += `<rect x="${x(i) - bw / 2}" y="${Math.min(y0, y1)}" width="${bw}" height="${Math.max(1, Math.abs(y1 - y0))}" fill="${col}" opacity="${inAnomaly(r.m) ? 0.95 : 0.55}" rx="2"/>`;
+    if (i % every === 0) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${mShort(r.m)}</text>`;
+  });
+  mount(box, { W, H, ml, mr, mt, mb, n, svg: g, tipHtml: (i) => {
+    const r = rows[i];
+    return `<div><b>${mLabel(r.m)}</b></div><div>Отклонение: ${fmtSigned(r.dev, 1)}%</div><div>Факт ${fmtNum(r.actual)} · норма ${fmtNum(r.expected)}</div><div>${STATUS[r.status] || r.status}</div>`;
+  } });
+}
+
+// ---- Поисковики ----
+function renderEngines() {
+  const rows = DATA.engines, n = rows.length;
+  const box = document.getElementById('eng-chart');
+  const W = Math.max(box.clientWidth, 280), H = 260, ml = 44, mr = 8, mt = 8, mb = 28;
+  const keys = [['ga4_google', 'Google · GA4', C.p1, ''], ['ga4_yandex', 'Яндекс · GA4', C.p3, ''],
+    ['metrika_google', 'Google · Метрика', C.p1, '4 3'], ['metrika_yandex', 'Яндекс · Метрика', C.p3, '4 3']];
+  const max = niceMax(Math.max(...rows.flatMap((r) => keys.map(([k]) => r[k] || 0)), 1) * 1.05);
+  const x = (i) => ml + (n === 1 ? 0 : i / (n - 1) * (W - ml - mr));
+  const y = (v) => mt + (1 - v / max) * (H - mt - mb);
+  const step = n > 1 ? (W - ml - mr) / (n - 1) : 10;
+  let g = '';
+  for (let i = 0; i <= 4; i++) { const v = max / 4 * i; g += `<line class="grid-line" x1="${ml}" x2="${W - mr}" y1="${y(v)}" y2="${y(v)}"/><text x="${ml - 6}" y="${y(v) + 4}" text-anchor="end">${fmtNum(v)}</text>`; }
+  rows.forEach((r, i) => { if (inAnomaly(r.m)) g += `<rect x="${x(i) - step / 2}" y="${mt}" width="${step}" height="${H - mt - mb}" fill="var(--g-color-base-generic)" opacity="0.8"/>`; });
+  const every = Math.ceil(n / 6);
+  rows.forEach((r, i) => { if (i % every === 0) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${mShort(r.m)}</text>`; });
+  for (const [k, , col, dash] of keys)
+    g += `<path d="${pathOf(rows.map((r, i) => (r[k] != null ? { x: x(i), y: y(r[k]) } : null)))}" fill="none" stroke="${col}" stroke-width="2" ${dash ? `stroke-dasharray="${dash}"` : ''} stroke-linejoin="round"/>`;
+  mount(box, { W, H, ml, mr, mt, mb, n, svg: g, tipHtml: (i) => {
+    const r = rows[i];
+    return `<div><b>${mLabel(r.m)}</b></div>` + keys.map(([k, l, col]) => `<div><b style="color:${col}">●</b> ${l}: ${fmtNum(r[k])}</div>`).join('');
+  } });
+  document.getElementById('eng-legend').innerHTML = keys.map(([, l, col]) => `<span><i style="background:${col}"></i>${l}</span>`).join('')
+    + '<span>GA4 за июль–август 2025 — пропуск (сбой сбора)</span>';
+}
+
+// ---- Сегменты GSC ----
+function renderSegments() {
+  const rows = DATA.segments, n = rows.length;
+  const box = document.getElementById('seg-chart');
+  const W = Math.max(box.clientWidth, 320), H = 280, ml = 44, mr = 8, mt = 8, mb = 28;
+  const keys = [['brand', 'Бренд', C.p2], ['informational', 'Информационные (блог, термины)', C.p1], ['product', 'Продуктовые страницы', C.p3], ['other', 'Прочее', C.p4]];
+  const tot = (r) => keys.reduce((a, [k]) => a + (r[k] || 0), 0);
+  const max = niceMax(Math.max(...rows.map(tot), 1) * 1.05);
+  const x = (i) => ml + (i + 0.5) / n * (W - ml - mr);
+  const y = (v) => mt + (1 - v / max) * (H - mt - mb);
+  const bw = Math.max(6, (W - ml - mr) / n * 0.62);
+  let g = '';
+  for (let i = 0; i <= 4; i++) { const v = max / 4 * i; g += `<line class="grid-line" x1="${ml}" x2="${W - mr}" y1="${y(v)}" y2="${y(v)}"/><text x="${ml - 6}" y="${y(v) + 4}" text-anchor="end">${fmtNum(v)}</text>`; }
+  rows.forEach((r, i) => {
+    let acc = 0;
+    for (const [k, , col] of keys) {
+      const v = r[k] || 0;
+      g += `<rect x="${x(i) - bw / 2}" y="${y(acc + v)}" width="${bw}" height="${Math.max(0, y(acc) - y(acc + v))}" fill="${col}"/>`;
+      acc += v;
+    }
+    g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${mShort(r.m)}</text>`;
+  });
+  const brk = rows.findIndex((r) => r.m === '2026-01');
+  if (brk > 0) {
+    const bx = (x(brk - 1) + x(brk)) / 2;
+    g += `<line x1="${bx}" x2="${bx}" y1="${mt}" y2="${H - mb}" stroke="var(--g-color-text-warning)" stroke-width="1.5" stroke-dasharray="5 4"/>`
+      + `<text x="${bx - 6}" y="${mt + 12}" text-anchor="end" style="fill:var(--g-color-text-warning)">разрыв ряда</text>`;
+  }
+  mount(box, { W, H, ml, mr, mt, mb, n, svg: g, tipHtml: (i) => {
+    const r = rows[i];
+    const partial = r.days < r.days_in_month ? `<div style="color:var(--g-color-text-warning)">данные за ${r.days} из ${r.days_in_month} дней</div>` : '';
+    return `<div><b>${mLabel(r.m)}</b> · всего ${fmtNum(tot(r), 1)}/день</div>` + keys.map(([k, l, col]) => `<div><b style="color:${col}">●</b> ${l}: ${fmtNum(r[k], 1)}</div>`).join('') + partial;
+  } });
+  document.getElementById('seg-legend').innerHTML = keys.map(([, l, col]) => `<span><i style="background:${col}"></i>${l}</span>`).join('');
+}
+
+// ---- Таблица ----
+function renderTable() {
+  const s = cur();
+  document.getElementById('tbl-title').textContent = s.label + ' — таблица по месяцам';
+  const head = '<tr><th>Месяц</th><th class="num">Факт</th><th class="num">Норма</th><th class="num">Коридор</th><th class="num">Откл.</th><th>Статус</th><th class="num">Индекс</th><th>Уверенность</th></tr>';
+  const body = s.rows.map((r) => {
+    const dev = r.dev == null ? '—' : `<span class="${r.dev < 0 ? 'neg-t' : 'pos-t'}">${fmtSigned(r.dev, 1)}%</span>`;
+    const fc = r.forecast && r.actual == null;
+    return `<tr class="${fc ? 'fc' : ''}"><td>${mLabel(r.m)}${inAnomaly(r.m) ? ' *' : ''}${DATA.partial && DATA.partial[r.m] ? ' †' : ''}</td><td class="num">${fmtNum(r.actual)}</td><td class="num">${fmtNum(r.expected)}</td>`
+      + `<td class="num">${r.low == null ? '—' : fmtNum(r.low) + '–' + fmtNum(r.high)}</td><td class="num">${dev}</td>`
+      + `<td>${STATUS[r.status] || r.status}</td><td class="num">${r.si == null ? '—' : fmtNum(r.si, 2)}</td><td>${CONF[r.conf] || r.conf}</td></tr>`;
+  }).join('');
+  document.getElementById('tbl').innerHTML = head + body;
+}
+
+function renderAll() { renderKpis(); renderNorm(); renderDev(); renderEngines(); renderSegments(); renderTable(); }
+renderHead();
+renderAll();
+document.getElementById('series-seg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.series = b.dataset.k;
+  document.querySelectorAll('#series-seg button').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  renderAll();
+});
+let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(renderAll, 120); });
+</script>
+</body>
+</html>

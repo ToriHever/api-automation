@@ -139,6 +139,16 @@ node scripts/gsc-segments-monthly.js
 - **Проверка надёжности:** норма не строится (и старые строки ряда удаляются), если уровень соседних сезонов различается больше чем на `--max-trend` (по умолчанию 20%) или коридор шире `--max-band` (35%). На данных 2026-09 так отфильтровываются все ряды en (тренд −21…−38%) и Яндекс ru по GA4 (+24%): индекс там описывает спад/рост, а не сезон. Обойти: `--force-unreliable` (тогда в выводе остаётся предупреждение).
 - Состав по сегментам (`reports.v_gsc_segment_share`) — только для объяснения, а не норма. **Разрыв ряда:** между декабрём 2025 и январём 2026 брендовые клики в GSC выросли с ~1–2 до ~41 в день (доля бренда 2% -> 34%), без аналога в GA4 и Метрике, причина не выяснена. Сравнивать сегменты можно только внутри 2026 года (январь–сентябрь): там бренд стабилен (45–53/день), информационные страницы упали с ~83 до ~25–30/день, продуктовые с ~11 до ~5–6/день. В GSC до 2025-08 неполные данные.
 
+## 🖥 Отчёт «Норма трафика SEO» для DataLens
+```bash
+psql "$DATABASE_URL" -f services/reports/report_views.sql      # вью reports.v_seo_norm_report / v_seo_norm_latest
+cd reports/seo-norm-datalens
+psql "$DATABASE_URL" -At -f queries.sql -o data.json           # данные из БД
+node build.js --data data.json                                 # -> dist/seo-norm-report.html
+python ../gsc-datalens/tools/validate_page.py --strict dist/seo-norm-report.html
+```
+Без `--data` собирается из `data.snapshot.json` (срез 2026-09-30, `node make-snapshot.js`). Итоги работы, выводы, проблемы и открытые вопросы — в [services/reports/README.md](services/reports/README.md).
+
 ## 🔎 Органика по поисковым системам (Яндекс / Google)
 ```bash
 # Органический трафик по дням и поисковикам, ru и en, GA4 и Метрика -> reports.traffic_organic_engine (upsert)
