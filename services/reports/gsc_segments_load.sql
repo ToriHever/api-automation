@@ -15,7 +15,7 @@ br AS (
     WHERE EXISTS (SELECT 1 FROM common.brand_keywords bk WHERE rq.request ILIKE '%' || bk.keyword || '%')
 ),
 base AS (
-    SELECT sc.event_date, sc.clicks, sc.impressions, sc.position,
+    SELECT sc.event_date, date_trunc('month', sc.event_date)::date AS month, sc.clicks, sc.impressions, sc.position,
            CASE WHEN br.request IS NOT NULL THEN 'brand'
                 WHEN pu.url_norm IS NOT NULL THEN 'product'
                 WHEN sm.url ~* '^https://ddos-guard\.ru/(blog|terms|tutorials|technologies)(/|$)' THEN 'informational'
@@ -28,12 +28,12 @@ base AS (
       AND sm.url ILIKE 'https://ddos-guard.ru%'
 )
 INSERT INTO reports.gsc_segment_monthly (month, segment, clicks, impressions, avg_position, days_with_data, days_in_month)
-SELECT date_trunc('month', event_date)::date,
+SELECT month,
        segment,
        SUM(clicks),
        SUM(impressions),
        ROUND(SUM(position * impressions)::numeric / NULLIF(SUM(impressions), 0), 2),
        COUNT(DISTINCT event_date),
-       EXTRACT(DAY FROM (date_trunc('month', event_date) + INTERVAL '1 month - 1 day'))::int
+       EXTRACT(DAY FROM (month + INTERVAL '1 month' - INTERVAL '1 day'))::int
 FROM base
-GROUP BY 1, 2;
+GROUP BY month, segment;
