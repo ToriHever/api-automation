@@ -193,6 +193,11 @@ WHERE request ~* '\mdns\w*'
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Защита')
 WHERE cluster_id IS NULL AND request ~* '\mdns\w*' AND request ~* '\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*';
 
+-- Коррекция: 'тест Тьюринга' — это капча, а не интент 'Тест'.
+UPDATE common.requests SET cluster_id = NULL
+WHERE request ~* '\mтьюринг\w*'
+  AND cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Тест');
+
 -- Тир 0 — исключения
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Не целевые')
 WHERE cluster_id IS NULL AND request ~* '(\mmikrotik\M|\mмикротик\M|\mreg ru\M)';
@@ -333,7 +338,7 @@ UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters 
 WHERE cluster_id IS NULL AND request ~* '(\mпоследствия\w*|\mчем опасны\w*|\mчем опасна\w*|\mриски\w*|\mриск\w*|\mмешает\w*|\mдоступу\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Тест')
-WHERE cluster_id IS NULL AND request ~* '(\mтест\w*|\mпроверка\w*|\mпроверить\w*|\mпроверки\w*)';
+WHERE cluster_id IS NULL AND request ~* '(\mтест\w*|\mпроверка\w*|\mпроверить\w*|\mпроверки\w*)' AND request !~* '\mтьюринг\w*';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Анализ')
 WHERE cluster_id IS NULL AND request ~* '(\mанализа\w*|\mанализ\w*)';
@@ -406,7 +411,7 @@ WHERE cluster_id IS NULL AND request ~* '^(\s*(ddos|дудос|ддос|атак
 --      расшифровыва.../читается/пишется и т.п. редко значат что-то ещё).
 --   6. Намерение защититься -> 'защита'.
 --   7. Упоминание ddos в любом написании -> 'ddos атака'.
---   8. Просто слово 'атака' без остального -> удалить / другой вид атаки.
+--   8. Просто слово 'атака' без остального и БЕЗ ddos -> 'другой вид атаки'.
 -- ============================================================
 
 -- Дополняем common.topics всеми каноническими значениями словаря уточнения.
@@ -455,7 +460,6 @@ INSERT INTO common.topics (topic_name) VALUES
     ('сети'),
     ('сленг'),
     ('телефон'),
-    ('удалить'),
     ('хакер'),
     ('хост'),
     ('хостинг'),
@@ -475,6 +479,13 @@ WHERE request ~* '(\mзащищ[её]\w*|\mбезопасн\w*|\mзахист\w*
 -- прошлых прогонов увидели новые/уточнённые правила выше по приоритету.
 UPDATE common.requests SET topic_id = NULL
 WHERE topic_id = (SELECT topic_id FROM common.topics WHERE topic_name = 'ddos атака');
+
+-- Коррекция: раньше 'другой вид атаки' получали и обычные ddos-запросы ('ddos
+-- атака', 'ddos attack') — теперь эта тема только для не-ddos атак. Сбрасываем
+-- такие строки, чтобы они пересчитались ('ddos атака' или конкретная тема).
+UPDATE common.requests SET topic_id = NULL
+WHERE topic_id = (SELECT topic_id FROM common.topics WHERE topic_name = 'другой вид атаки')
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)';
 
 -- Приоритет 0д: dns + любое упоминание ddos -> тема 'dns' (а не общая 'ddos атака').
 UPDATE common.requests SET topic_id = (SELECT topic_id FROM common.topics WHERE topic_name = 'dns')
@@ -641,11 +652,14 @@ WHERE topic_id IS NULL AND request ~* '(\mзащит\w*|\mзащищ[её]\w*|\m
 -- выдумывать в БД не нужно.
 
 -- Приоритет 6: слово 'атака' есть, но ничего конкретнее не нашли.
-UPDATE common.requests SET topic_id = (SELECT topic_id FROM common.topics WHERE topic_name = 'удалить')
-WHERE topic_id IS NULL AND request ~* '(\mатак\w*|(\mattack\w*|\matack\w*|\mataka\w*))' AND request ~* '(\mчто\M|\mэто\M|\mкак\M|\mкакой\M|\mкто такой\M|\mкто такие\M)';
+-- Тема 'удалить' (старая рабочая пометка VBA) упразднена: 'что/это/как' + 'атака'
+-- уже покрыты кластером 'Что'/'Как' и темой 'ddos атака'.
 
+-- 'другой вид атаки' — атака НЕ ddos (сетевые атаки, xss и т.п. без конкретной темы).
+-- Запросы с ddos-упоминанием сюда не попадают: они идут в 'ddos атака' (Приоритет 7).
 UPDATE common.requests SET topic_id = (SELECT topic_id FROM common.topics WHERE topic_name = 'другой вид атаки')
-WHERE topic_id IS NULL AND request ~* '(\mатак\w*|(\mattack\w*|\matack\w*|\mataka\w*))';
+WHERE topic_id IS NULL AND request ~* '(\mатак\w*|(\mattack\w*|\matack\w*|\mataka\w*))'
+  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)';
 
 -- ============================================================
 -- ЧАСТЬ 3: hub_id — упоминание ddos + уточнение продукта
