@@ -668,19 +668,19 @@ WHERE hub_id IS NULL AND request ~* '(\ml7\M|\mlayer\s*7\w*)';
 -- Приоритет 1: ddos + конкретный продукт -> хаб продукта.
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Сайт')
-WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)' AND request ~* '(\mсайт\w*|\msite\w*)';
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)' AND request ~* '(\mсайт\w*|\msite\w*)';
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Сети')
-WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)' AND request ~* '\mсет\w*';
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)' AND request ~* '\mсет\w*';
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Хостинг')
-WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)' AND request ~* '\mхостинг\w*';
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)' AND request ~* '\mхостинг\w*';
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'VDS')
-WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)' AND request ~* '\mvds\w*';
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)' AND request ~* '\mvds\w*';
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'DS / Дедик / Выделенный')
-WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)' AND request ~* '(\mсервер\w*|\mserver\w*)';
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)' AND request ~* '(\mсервер\w*|\mserver\w*)';
 
 -- Приоритет 1б: запросы БЕЗ ddos-уточнения продукта, но про конкретную тему —
 -- хаб по ключевым словам (tcp/udp/vpn -> 'Сети', vps -> 'VDS', dns -> 'DNS',
@@ -690,7 +690,7 @@ WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\m
 -- важен — первое совпадение выигрывает (specific -> generic). Широкие правила
 -- (Web-технологии/Кибербезопасность/Атака/Защита) не применяются к запросам с ddos.
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Бренд Конкурент')
-WHERE hub_id IS NULL AND request ~* '(\mstorm ?wall\w*|\mшторм ?вол\w*|\mэджцентр\w*|\medgecenter\w*|\mqrator\w*|\mкуратор\w*|\mvariti\w*)';
+WHERE hub_id IS NULL AND request ~* '(\mstorm ?wall\w*|\mшторм ?вол\w*|\mэджцентр\w*|\medgecenter\w*|\mqrator\w*|\mкуратор\w*|\mvariti\w*|\msolutions llc\M)';
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Бренд')
 WHERE hub_id IS NULL AND request ~* '(\mddos[- ]?guard\w*|\mддос[- ]?гард\w*|\mddg\M|\mddo\M|\mguard server)';
@@ -739,22 +739,22 @@ WHERE hub_id IS NULL AND request ~* '(\mфишинг\w*|\mвирус\w*|\mвре
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Web-технологии')
 WHERE hub_id IS NULL AND request ~* '(\mtilda\w*|\mтильд\w*|\mcdn\M|\mсоздани\w* сайт\w*|\mсоздать сайт\w*|\mразработ\w* сайт\w*|\mразработчик\w* сайт\w*|\mбраузер\w*|\mhttp\w*|\mhtml\w*|\mjavascript\w*|\m404\M|\mсайт\M|\mdomain\w*|\mдомен\w*|\mсервер\w*|\mserver\w*|\mсервис\w*)'
-  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)'' AND request ~* ''(\mсайт\w*|\msite\w*)';
+  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)'' AND request ~* ''(\mсайт\w*|\msite\w*)';
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Кибербезопасность')
 WHERE hub_id IS NULL AND request ~* '(\mкибербезопасност\w*|\mкибер\w*|\mcyber\w*|\mбезопасност\w*)'
-  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)'' AND request ~* ''(\mсайт\w*|\msite\w*)';
+  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)'' AND request ~* ''(\mсайт\w*|\msite\w*)';
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Атака')
 WHERE hub_id IS NULL AND request ~* '(\mатак\w*)'
-  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)'' AND request ~* ''(\mсайт\w*|\msite\w*)';
+  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)'' AND request ~* ''(\mсайт\w*|\msite\w*)';
 
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'Защита (без DDoS)')
 WHERE hub_id IS NULL AND request ~* '\mзащит\w*'
-  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)'' AND request ~* ''(\mсайт\w*|\msite\w*)';
+  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)'' AND request ~* ''(\mсайт\w*|\msite\w*)';
 
 -- Приоритет 2: ddos без уточнения продукта -> хаб 'DDoS'.
 UPDATE common.requests SET hub_id = (SELECT hub_id FROM common.hubs WHERE hub_name = 'DDoS')
-WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*)';
+WHERE hub_id IS NULL AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)';
 
 COMMIT;
