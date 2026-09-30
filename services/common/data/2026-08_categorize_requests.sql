@@ -491,6 +491,7 @@ INSERT INTO common.topics (topic_name) VALUES
     ('cloudflare'),
     ('ddos атака'),
     ('определение'),
+    ('инструменты атак'),
     ('dns'),
     ('dns_spoofing'),
     ('icmp'),
@@ -709,6 +710,14 @@ WHERE topic_id IS NULL AND request ~* '\mрасшифровыва\w*';
 
 UPDATE common.requests SET topic_id = (SELECT topic_id FROM common.topics WHERE topic_name = 'написание/произношение')
 WHERE topic_id IS NULL AND request ~* '(\mпиш\w*|\mчита\w*|\mпроизнос\w*|\mзвуч\w*)';
+
+-- Приоритет 4б: 'инструменты атак' — tool/soft/софт/панель/скрипт/программа/бот/
+-- kali/stresser/... в контексте ddos (или слова 'атака'/брутфорс) БЕЗ слов защиты
+-- (защит*/anti/protect*). Если слова защиты есть — тема 'защита' (ниже).
+UPDATE common.requests SET topic_id = (SELECT topic_id FROM common.topics WHERE topic_name = 'инструменты атак')
+WHERE topic_id IS NULL AND request ~* '(\mtools?\M|\msoft\M|\mсофт\w*|\mpanel\M|\mпанел\w*|\mscripts?\M|\mскрипт\w*|\mпрограмм\w*|\mприложени\w*|\mbot\M|\mбот\w*|\mstress\w*|\mbooster\M|\mkali\M|\mloic\M|\mhoic\M|\mhulk\M|\mfsociety\M|\mlois\M|\mkiller\M|\mpython\M|\mpy\M|\mpypi\M|\mgithub\M|\mexe\M|\mc2\M|\mmanager\M|\mbox\M|\mинструмент\w*|\mтроян\w*|\mtrojan\M)'
+  AND (request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*|\mdenial of service\w*|\mdistributed denial\w*|\mdddos\w*)' OR request ~* '(\mатак\w*|\mattack\w*|\mбрутфорс\w*|\mbrute\w*)')
+  AND request !~* '(\mзащит\w*|\mзащищ[её]\w*|\mбезопасн\w*|\mзахист\w*|\mprotect\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)';
 
 -- Приоритет 5: конкретной цели/намерения не нашли, но есть намерение защититься -> 'защита'.
 UPDATE common.requests SET topic_id = (SELECT topic_id FROM common.topics WHERE topic_name = 'защита')
