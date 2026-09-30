@@ -181,6 +181,14 @@ UPDATE common.requests SET cluster_id = NULL
 WHERE request ~* '(\mзащищ[её]\w*|\mбезопасн\w*|\mзахист\w*)'
   AND cluster_id IS DISTINCT FROM (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Защита');
 
+-- Коррекция: запросы про dns БЕЗ упоминания ddos раньше попадали в кластер
+-- 'Вредоносные (Цели: IP/Телефон/Сеть)' (правило 'dns' не требовало ddos).
+-- Сбрасываем такие строки, чтобы цепочка пересчитала их заново.
+UPDATE common.requests SET cluster_id = NULL
+WHERE request ~* '\mdns\w*'
+  AND request !~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)' AND request ~* '(\mсайт\w*|\msite\w*)'
+  AND cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Цели: IP/Телефон/Сеть)');
+
 -- Тир 0 — исключения
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Не целевые')
 WHERE cluster_id IS NULL AND request ~* '(\mmikrotik\M|\mмикротик\M|\mreg ru\M)';
@@ -271,7 +279,14 @@ UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters 
 WHERE cluster_id IS NULL AND request ~* '(\mзадудосить\w*|\mдудосить\w*|\mсделать\w*|\mдосить\w*|\mдосят\w*|\mддосят\w*|\mдудосят\w*|\mзадудосили\w*|\mддосер\w*|\mдудосер\w*|\mddoser\w*)';
 
 UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Цели: IP/Телефон/Сеть)')
-WHERE cluster_id IS NULL AND request ~* '(\mпо айпи\w*|\mпо номеру\w*|\mна номер\w*|\mна телефон\w*|\mмобильный\w*|\mна интернет\w*|\mна провайдеров\w*|\mна домен\w*|\mна яндекс\w*|\mна россию\w*|\mномера\w*|\mwifi\w*|\mайпи\w*|\mdns\w*)';
+WHERE cluster_id IS NULL AND request ~* '(\mпо айпи\w*|\mпо номеру\w*|\mна номер\w*|\mна телефон\w*|\mмобильный\w*|\mна интернет\w*|\mна провайдеров\w*|\mна домен\w*|\mна яндекс\w*|\mна россию\w*|\mномера\w*|\mwifi\w*|\mайпи\w*)';
+
+-- 'dns' — отдельно и ТОЛЬКО вместе с упоминанием ddos: раньше любой запрос про
+-- dns (в т.ч. 'публичные dns сервера', 'что такое dns зона') уходил в кластер
+-- 'Вредоносные (Цели: IP/Телефон/Сеть)', хотя к ddos не относится.
+UPDATE common.requests SET cluster_id = (SELECT cluster_id FROM common.clusters WHERE cluster_name = 'Вредоносные (Цели: IP/Телефон/Сеть)')
+WHERE cluster_id IS NULL AND request ~* '\mdns\w*'
+  AND request ~* '(\mddos\w*|\mдудос\w*|\mддос\w*|\mdos\w*|\mдосс\w*|\mдоос\w*|\mдос\w*|\md o s\w*|\mдедос\w*|\mдидос\w*|\mдодос\w*|\mдудокс\w*|\mdoss\w*|\mдудоса\w*|\mд дос\w*|\mддс\w*|\mмдос\w*|\mдтос\w*|\mdds\w*|\mdudos\w*|\mдэдос\w*|\mdoc\w*|\mdo dos\w*|\mдосить\w*|\mддосить\w*|\mдоус\w*|\mотказ в обслуживании\w*|\mддосить\w*|\mдудосить\w*|\mзаддосить\w*|\mзадудосить\w*|\mввщы\w*|\m(?:anti|анти)[- ]?(?:ddos|ддос|дудос)\w*)' AND request ~* '(\mсайт\w*|\msite\w*)';
 
 -- Новое: ddos-упоминание (в т.ч. с явным словом 'атака' — 'ddos атака на vpn')
 -- + предлог 'на' + конкретная цель (vpn/втб и т.п.) -> тот же кластер
