@@ -170,7 +170,7 @@ async function fetchMetrika(siteKey, range) {
                 const m = row.metrics.map(Math.round);
                 rows.push({
                     event_date: row.dimensions[0].name,
-                    channel: row.dimensions[1].name,
+                    channel: row.dimensions[1].name || row.dimensions[1].id || '(not set)',
                     sessions: m[0], engaged_sessions: null, users: m[1], new_users: m[2], pageviews: m[3]
                 });
             }
