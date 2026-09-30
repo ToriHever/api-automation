@@ -9,21 +9,24 @@ CREATE SCHEMA IF NOT EXISTS reports;
 --   exclude — месяц(ы) исключить из расчёта индекса
 --   keep    — НЕ исключать, даже если автоопределение пометило месяц аномальным
 -- site NULL = относится к обоим сайтам (ru и en).
+-- applies_to: событие в поисковой выдаче (апдейт, сбой) влияет на трафик, но не на спрос Wordstat,
+-- поэтому по умолчанию 'traffic'; для праздников/новостных всплесков спроса — 'demand' или 'all'.
 CREATE TABLE IF NOT EXISTS reports.seasonality_events (
     id SERIAL PRIMARY KEY,
     site TEXT CHECK (site IN ('ru', 'en')),
     month_from DATE NOT NULL,
     month_to DATE NOT NULL,
     action TEXT NOT NULL DEFAULT 'exclude' CHECK (action IN ('exclude', 'keep')),
+    applies_to TEXT NOT NULL DEFAULT 'traffic' CHECK (applies_to IN ('traffic', 'demand', 'all')),  -- к трафику, к спросу Wordstat или к обоим
     description TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-COMMENT ON TABLE reports.seasonality_events IS 'Ручной список аномальных месяцев (апдейты, сбои). month_from/month_to — первые числа месяцев, включительно. Пример: INSERT INTO reports.seasonality_events (site, month_from, month_to, description) VALUES (NULL, ''2025-03-01'', ''2025-03-01'', ''Апдейт Яндекса'');';
+COMMENT ON TABLE reports.seasonality_events IS 'Ручной список аномальных месяцев (апдейты, сбои). month_from/month_to — первые числа месяцев, включительно. Пример: INSERT INTO reports.seasonality_events (site, month_from, month_to, applies_to, description) VALUES (NULL, ''2025-03-01'', ''2025-03-01'', ''traffic'', ''Апдейт Яндекса'');';
 
 -- Помесячные значения ряда и статус участия в расчёте индекса
 CREATE TABLE IF NOT EXISTS reports.seasonality_monthly (
-    series TEXT NOT NULL,             -- seo_traffic_ga4 | seo_traffic_metrika
+    series TEXT NOT NULL,             -- seo_traffic_ga4 | seo_traffic_metrika | demand_<продукт>
     site TEXT NOT NULL,               -- ru | en
     month DATE NOT NULL,              -- первое число месяца
     value BIGINT NOT NULL,            -- органические сессии/визиты за месяц

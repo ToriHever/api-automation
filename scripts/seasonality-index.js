@@ -14,14 +14,20 @@
 //   - аномальные месяцы: автоматически (отклонение от медианы соседних месяцев) и
 //     по ручному списку reports.seasonality_events (exclude/keep).
 // Источник: reports.traffic_daily (см. scripts/traffic-history-36m.js).
-// Ряды: seo_traffic_ga4 (основной, канал Organic Search) и seo_traffic_metrika
-// (для сверки, «Переходы из поисковых систем»).
+// Ряды трафика: seo_traffic_ga4 (основной, канал Organic Search) и seo_traffic_metrika
+// (для сверки, «Переходы из поисковых систем»), сайты ru и en.
+// Ряды спроса: demand_<продукт> (L3-4, L7, VDS, DS, Хостинг, Главная) — сумма частотности
+// Wordstat по фразам продукта (reports.v_demand_product_monthly, собирается
+// scripts/wordstat-product-demand.js). Спрос — по российскому Яндексу, поэтому только site = ru;
+// --from к нему НЕ применяется (Wordstat не зависит от разделения сайтов, собран с 2024-09).
 // Результат: reports.seasonality_monthly и reports.seasonality_index (схема —
 // services/reports/seasonality_schema.sql, создаётся автоматически).
 //
 // Запуск:
 //   node scripts/seasonality-index.js
 //   node scripts/seasonality-index.js --series seo_traffic_ga4 --site ru
+//   node scripts/seasonality-index.js --series demand          # все продукты спроса
+//   node scripts/seasonality-index.js --series demand_L7
 //   node scripts/seasonality-index.js --from 2024-09-16 --min-months 10 --dry-run   # без записи в БД
 
 require('dotenv').config();
@@ -29,7 +35,7 @@ const fs = require('fs');
 const path = require('path');
 const DatabaseManager = require('../core/DatabaseManager');
 
-const SCHEMA_FILES = ['schema.sql', 'seasonality_schema.sql']
+const SCHEMA_FILES = ['schema.sql', 'seasonality_schema.sql', 'demand_schema.sql']
     .map(f => path.join(__dirname, '..', 'services', 'reports', f));
 
 const SERIES = {
@@ -218,7 +224,26 @@ async function loadRows(db, series, site, from) {
     }));
 }
 
-async function save(db, series, site, result, from) {
+// Ряд спроса по продукту. Месяц полный, если он уже закончился и в нём есть данные по всем
+// собранным фразам продукта (иначе — частичный сбор, месяц не участвует).
+async function loadDemandRows(db, product) {
+    const res = await db.query(
+        `SELECT to_char(date_trunc('month', month), 'YYYY-MM-DD') AS month,
+                SUM(frequency)::bigint AS value, MAX(phrases)::int AS phrases
+         FROM reports.v_demand_product_monthly WHERE product = $1 GROUP BY 1 ORDER BY 1`,
+        [product]
+    );
+    const maxPhrases = Math.max(0, ...res.rows.map(r => r.phrases));
+    const now = new Date();
+    const currentMonth = monthKey(now.getFullYear(), now.getMonth() + 1);
+    return res.rows.map(r => ({
+        month: r.month,
+        value: Number(r.value),
+        complete: r.month < currentMonth && r.phrases === maxPhrases
+    }));
+}
+
+async function save(db, series, site, result, note) {
     await db.query('BEGIN');
     try {
         await db.query('DELETE FROM reports.seasonality_monthly WHERE series = $1 AND site = $2', [series, site]);
@@ -230,7 +255,6 @@ async function save(db, series, site, result, from) {
                 [series, site, r.month, r.value, r.status, r.note, r.season, r.season_baseline, r.month_index]
             );
         }
-        const note = `Данные с ${from} (разделение ru/en). Сезоны по 12 мес., база = общие для всех сезонов полные месяцы; неполные месяцы и аномалии исключены`;
         for (const r of result.index) {
             await db.query(
                 `INSERT INTO reports.seasonality_index (series, site, month_num, seasonal_index, seasons_used, seasons_list, method_note)
@@ -265,7 +289,7 @@ function printResult(series, site, result) {
 async function main() {
     const minMonths = Number(arg('min-months', 10));
     const from = arg('from', DEFAULT_FROM);
-    const seriesList = arg('series') ? [arg('series')] : Object.keys(SERIES);
+    const seriesArg = arg('series');
     const sites = arg('site') ? [arg('site')] : ['ru', 'en'];
     const dryRun = flag('dry-run');
 
@@ -274,23 +298,43 @@ async function main() {
     try {
         for (const f of SCHEMA_FILES) await db.query(fs.readFileSync(f, 'utf8'));
         const ev = (await db.query(
-            `SELECT site, to_char(month_from,'YYYY-MM-DD') AS month_from, to_char(month_to,'YYYY-MM-DD') AS month_to, action, description
+            `SELECT site, applies_to, to_char(month_from,'YYYY-MM-DD') AS month_from, to_char(month_to,'YYYY-MM-DD') AS month_to, action, description
              FROM reports.seasonality_events`)).rows;
 
+        const demandProducts = (await db.query(
+            `SELECT DISTINCT product FROM reports.demand_phrases WHERE is_active ORDER BY 1`)).rows.map(r => `demand_${r.product}`);
+        const allSeries = [...Object.keys(SERIES), ...demandProducts];
+        let seriesList = allSeries;
+        if (seriesArg === 'demand') seriesList = demandProducts;
+        else if (seriesArg) seriesList = [seriesArg];
+
+        const trafficNote = `Данные с ${from} (разделение ru/en). Сезоны по 12 мес., база = общие для всех сезонов полные месяцы; неполные месяцы и аномалии исключены`;
+        const demandNote = 'Спрос Wordstat (Россия) по фразам продукта, все собранные месяцы. Сезоны по 12 мес., база = общие для всех сезонов полные месяцы; неполные месяцы и аномалии исключены';
+
         for (const series of seriesList) {
-            for (const site of sites) {
-                const rows = await loadRows(db, series, site, from);
-                if (!rows.length) { console.warn(`\n${series}/${site}: нет данных в reports.traffic_daily с ${from}`); continue; }
-                if (rows.every(r => r.value === 0)) {
+            const isDemand = series.startsWith('demand_');
+            for (const site of (isDemand ? sites.filter(s => s === 'ru') : sites)) {
+                if (isDemand) {
+                    const product = series.slice('demand_'.length);
+                    const pend = (await db.query(
+                        `SELECT COUNT(*) FILTER (WHERE fetched_to IS NULL)::int AS pending, COUNT(*)::int AS total
+                         FROM reports.demand_phrases WHERE product = $1 AND is_active`, [product])).rows[0];
+                    if (pend.pending) console.warn(`\n⚠ ${series}: не собраны ${pend.pending} из ${pend.total} фраз — спрос неполный`);
+                }
+                const rows = isDemand
+                    ? await loadDemandRows(db, series.slice('demand_'.length))
+                    : await loadRows(db, series, site, from);
+                if (!rows.length) { console.warn(`\n${series}/${site}: нет данных ${isDemand ? '(спрос ещё не собран: scripts/wordstat-product-demand.js)' : `в reports.traffic_daily с ${from}`}`); continue; }
+                if (!isDemand && rows.every(r => r.value === 0)) {
                     console.warn(`\n${series}/${site}: канал "${SERIES[series].channel}" не найден. Реальные каналы:`);
                     const ch = await db.query('SELECT DISTINCT channel FROM reports.traffic_daily WHERE source = $1 AND site = $2', [SERIES[series].source, site]);
                     console.warn('  ' + ch.rows.map(r => r.channel).join(' | '));
                     continue;
                 }
-                const events = ev.filter(e => !e.site || e.site === site);
+                const events = ev.filter(e => (!e.site || e.site === site) && (e.applies_to === 'all' || e.applies_to === (isDemand ? 'demand' : 'traffic')));
                 const result = computeSeasonality(rows, events, { minMonths });
                 printResult(series, site, result);
-                if (!dryRun) await save(db, series, site, result, from);
+                if (!dryRun) await save(db, series, site, result, isDemand ? demandNote : trafficNote);
             }
         }
         if (dryRun) console.log('\n(dry-run: в БД ничего не записано)');
@@ -299,7 +343,7 @@ async function main() {
     }
 }
 
-module.exports = { computeSeasonality };
+module.exports = { computeSeasonality, main };
 
 if (require.main === module) {
     main().catch(e => { console.error(e.message); process.exit(1); });

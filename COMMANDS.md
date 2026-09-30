@@ -140,17 +140,28 @@ node scripts/seasonality-index.js --series seo_traffic_ga4 --site ru
 - сезоны, где меньше `--min-months` (по умолчанию 10) пригодных месяцев — статус `incomplete_season`;
 - аномальные месяцы: автоматически (отклонение от медианы 2+2 соседних месяцев больше max(30% в ln, 3.5 робастных сигмы по MAD)) и по ручному списку `reports.seasonality_events`.
 
+**Ряды спроса** (`demand_L3-4`, `demand_L7`, `demand_VDS`, `demand_DS`, `demand_Хостинг`, `demand_Главная`): сумма частотности Wordstat по фразам продукта
+(`reports.v_demand_product_monthly`; фразы собирает `scripts/wordstat-product-demand.js`, привязка к продуктам из групп Топвизора в `reports.demand_phrases`).
+Только ru (Wordstat — российский Яндекс). Разделение сайтов на спрос не влияет, поэтому `--from` к нему не применяется: берутся все собранные месяцы (с 2024-09), а сезоны получаются полными (сен 2024 – авг 2025, сен 2025 – авг 2026).
+```bash
+node scripts/wordstat-product-demand.js --dry-run   # сначала собрать спрос (лимит 80 фраз/запуск, квота 100/час)
+node scripts/wordstat-product-demand.js
+node scripts/seasonality-index.js --series demand
+```
+Если не все фразы продукта собраны, скрипт предупредит: «не собраны N из M фраз — спрос неполный».
+
 Ограничение: за два сезона в индекс частично попадает тренд роста/падения между сезонами. Индекс станет надёжнее по мере добавления сезонов (смотреть `seasons_used`).
 
 Ручной список — обычная таблица, код менять не нужно:
 ```sql
 -- исключить месяц (site NULL = оба сайта)
-INSERT INTO reports.seasonality_events (site, month_from, month_to, action, description)
-VALUES (NULL, '2025-03-01', '2025-03-01', 'exclude', 'Апдейт Яндекса');
+INSERT INTO reports.seasonality_events (site, month_from, month_to, applies_to, action, description)
+VALUES (NULL, '2025-03-01', '2025-03-01', 'traffic', 'exclude', 'Апдейт Яндекса');
 -- оставить месяц, который авто-проверка ошибочно пометила аномальным
-INSERT INTO reports.seasonality_events (site, month_from, month_to, action, description)
-VALUES ('ru', '2024-12-01', '2024-12-01', 'keep', 'Это реальный сезонный пик');
+INSERT INTO reports.seasonality_events (site, month_from, month_to, applies_to, action, description)
+VALUES ('ru', '2024-12-01', '2024-12-01', 'traffic', 'keep', 'Это реальный сезонный пик');
 ```
+`applies_to`: `traffic` (по умолчанию), `demand` или `all` — событие в выдаче (апдейт, сбой) влияет на трафик, но не на спрос Wordstat.
 После правки списка перезапустить скрипт. 
 ## ⏰ Автоматизация через cron
 ### Прямой запуск bash-скриптов
