@@ -239,8 +239,7 @@ class WordStatCollector extends BaseCollector {
     async fetchDynamics(startDate, endDate) {
         const { actualStartDate, actualEndDate } = this.calculatePreviousMonthPeriod();
 
-        const keywordsFileList = process.env.WORDSTAT_KEYWORDS_FILE || 'dynamics_keywords_commercial.txt,dynamics_keywords_content.txt';
-        const allKeywords = await this.readKeywordsMulti(keywordsFileList);
+        const allKeywords = await this.readActiveRequests('dynamics');
         const batch = await this.getNextQueueBatch('dynamics', allKeywords, {
             periodStart: actualStartDate,
             periodEnd: actualEndDate
@@ -362,7 +361,7 @@ class WordStatCollector extends BaseCollector {
         const date = checkDate || this.formatDate(new Date());
         this.logger.info(`Дата для topRequests: ${date}`);
 
-        const allKeywords = await this.readKeywords('top_keywords.txt');
+        const allKeywords = await this.readActiveRequests('top');
         const batch = await this.getNextQueueBatch('top', allKeywords, { checkDate: date });
 
         if (batch.length === 0) {
@@ -524,57 +523,35 @@ class WordStatCollector extends BaseCollector {
     }
 
     /**
-     * Чтение ключевых слов из НЕСКОЛЬКИХ файлов, перечисленных через запятую
-     * (например "dynamics_keywords_commercial.txt,dynamics_keywords_content.txt").
-     * Порядок файлов важен: очередь (wordstat.collection_queue) сеется один раз за
-     * период и обрабатывается по возрастанию id, поэтому фразы из файла, указанного
-     * первым, гарантированно попадут в очередь с меньшим id и соберутся раньше —
-     * так коммерческий список не ждёт, пока отработает длинный контентный.
-     * Дубли между файлами убираются (порядок первого вхождения сохраняется).
+     * Список фраз для проверки — из wordstat.check_list (БД), не из .txt-файлов
+     * (см. миграцию 2026-09-30, scripts/migrate-wordstat-checklist.js).
+     * Порядок сохраняет старое поведение файлов: commercial раньше content
+     * (для method='dynamics'; category NULL для 'top' не влияет на сортировку).
+     * Очередь (wordstat.collection_queue) сеется один раз за период и
+     * обрабатывается по возрастанию id — то, что попадёт в SELECT раньше,
+     * получит меньший id и соберётся раньше.
      */
-    async readKeywordsMulti(fileListStr) {
-        const filenames = fileListStr.split(',').map(f => f.trim()).filter(Boolean);
-        const seen = new Set();
-        const combined = [];
+    async readActiveRequests(method) {
+        const result = await this.dbManager.query(
+            `SELECT r.request AS phrase
+             FROM wordstat.check_list cl
+             JOIN common.requests r ON r.request_id = cl.request_id
+             WHERE cl.method = $1 AND cl.is_active = true
+             ORDER BY CASE cl.category
+                          WHEN 'commercial' THEN 0
+                          WHEN 'content' THEN 1
+                          ELSE 2
+                      END, r.request`,
+            [method]
+        );
 
-        for (const filename of filenames) {
-            const keywords = await this.readKeywords(filename);
-            for (const phrase of keywords) {
-                const key = phrase.toLowerCase();
-                if (seen.has(key)) continue;
-                seen.add(key);
-                combined.push(phrase);
-            }
-        }
-
-        this.logger.info(`Итого ${combined.length} уникальных ключевых слов из ${filenames.length} файл(ов): ${filenames.join(', ')}`);
-        return combined;
-    }
-
-    /**
-     * Чтение ключевых слов из файла
-     */
-    async readKeywords(filename) {
-        const fs = require('fs');
-        const path = require('path');
-
-        const keywordsPath = path.join(__dirname, 'keywords', filename);
-
-        if (!fs.existsSync(keywordsPath)) {
-            throw new Error(`Файл с ключевыми словами не найден: ${keywordsPath}`);
-        }
-
-        const content = fs.readFileSync(keywordsPath, 'utf-8');
-        const keywords = content
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0 && !line.startsWith('#'));
+        const keywords = result.rows.map(row => row.phrase);
 
         if (keywords.length === 0) {
-            throw new Error(`Файл ${filename} пуст`);
+            throw new Error(`wordstat.check_list пуст для method='${method}' (is_active = true)`);
         }
 
-        this.logger.info(`Загружено ${keywords.length} ключевых слов из ${filename}`);
+        this.logger.info(`Загружено ${keywords.length} активных фраз из wordstat.check_list для method='${method}'`);
         return keywords;
     }
 

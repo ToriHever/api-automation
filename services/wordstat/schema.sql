@@ -61,3 +61,35 @@ CREATE TABLE IF NOT EXISTS wordstat.collection_queue (
 
 CREATE INDEX IF NOT EXISTS idx_queue_pending
     ON wordstat.collection_queue(method, status);
+
+-- ============================================
+-- check_list — какие запросы проверяются через Wordstat (заменяет
+-- .txt-файлы в services/wordstat/keywords/: dynamics_keywords_commercial.txt,
+-- dynamics_keywords_content.txt, top_keywords.txt — см. 2026-09-30).
+-- category различает приоритет для method='dynamics' (commercial собирается
+-- раньше content — см. WordStatCollector.readActiveRequests); для
+-- method='top' category не используется (NULL).
+-- Редактируется напрямую в БД (is_active = false вместо удаления строки
+-- из .txt-файла), подхватывается со следующего периода сбора, как и раньше.
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS wordstat.check_list (
+    id SERIAL PRIMARY KEY,
+    request_id INTEGER NOT NULL REFERENCES common.requests(request_id),
+    method VARCHAR(20) NOT NULL CHECK (method IN ('dynamics', 'top')),
+    category VARCHAR(20) CHECK (category IN ('commercial', 'content')),
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (request_id, method)
+);
+
+CREATE INDEX IF NOT EXISTS idx_check_list_method_active
+    ON wordstat.check_list(method, is_active);
+
+DROP TRIGGER IF EXISTS update_check_list_updated_at ON wordstat.check_list;
+
+CREATE TRIGGER update_check_list_updated_at
+    BEFORE UPDATE ON wordstat.check_list
+    FOR EACH ROW
+    EXECUTE FUNCTION wordstat.update_updated_at_column();

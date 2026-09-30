@@ -27,34 +27,34 @@ services/wordstat/
 ├── config.json                # Конфигурация сервиса
 ├── schema.sql                 # SQL схема (таблицы, триггеры, очередь)
 ├── README.md                  # Этот файл
-└── keywords/
-    ├── dynamics_keywords_commercial.txt  # dynamics: коммерческие темы (DDoS/хостинг/CDN/WAF/бренды)
-    ├── dynamics_keywords_content.txt     # dynamics: образовательный/контентный пул
+└── keywords/                              # АРХИВ — больше не читается коллектором
+    ├── dynamics_keywords_commercial.txt  # (перенесено в wordstat.check_list 2026-09-30)
+    ├── dynamics_keywords_content.txt     # (перенесено в wordstat.check_list 2026-09-30)
     ├── dynamics_keywords.txt             # legacy, коллектором по умолчанию больше не используется
-    └── top_keywords.txt                  # Ключи для метода top
+    ├── dynamics_range_keywords.txt       # ещё читается напрямую — см. scripts/wordstat-dynamics-range-daily.js
+    └── top_keywords.txt                  # (перенесено в wordstat.check_list 2026-09-30)
 ```
 
-### Почему два файла для dynamics
+Список активных фраз для `dynamics`/`top` теперь в БД — см. "Управление списком
+проверяемых фраз" ниже.
 
-Список для `dynamics` разделён на **коммерческий** (продукты компании — защита от
+### Почему у dynamics есть category (commercial/content)
+
+Список для `dynamics` делится на **коммерческий** (продукты компании — защита от
 DDoS, хостинг/VDS/DS, CDN, WAF, бренды/конкуренты, аудит защищённости) и
 **контентный** (образовательные темы для контент-планирования — OSI, TCP/UDP, DNS,
 2FA, капча, SQL-инъекции, XSS и т.п.), не привязанные к конкретному продукту.
 
-`WORDSTAT_KEYWORDS_FILE` теперь принимает список файлов через запятую (см.
-[`readKeywordsMulti`](WordStatCollector.js)), по умолчанию:
-```
-WORDSTAT_KEYWORDS_FILE=dynamics_keywords_commercial.txt,dynamics_keywords_content.txt
-```
-**Порядок важен**: очередь на период сеется один раз и обрабатывается по
-возрастанию `id`, поэтому фразы из файла, указанного первым (коммерческий),
-получают меньший `id` и гарантированно собираются в первую очередь — контентный
-«хвост» не блокирует сбор бизнес-критичных данных, даже если общий список большой.
+С 2026-09-30 это поле `category` в `wordstat.check_list`, не два файла (см.
+"Управление списком проверяемых фраз" ниже). **Порядок важен**: очередь на
+период сеется один раз и обрабатывается по возрастанию `id`, `readActiveRequests`
+в [`WordStatCollector.js`](WordStatCollector.js) сортирует `commercial` перед
+`content` — так контентный «хвост» не блокирует сбор бизнес-критичных данных,
+даже если общий список большой.
 
-Чтобы временно собрать только один из списков — переопредели переменную:
-```bash
-WORDSTAT_KEYWORDS_FILE=dynamics_keywords_commercial.txt npm run collect:wordstat:dynamics
-```
+Чтобы временно собрать только один из списков — `UPDATE wordstat.check_list
+SET is_active = false WHERE method = 'dynamics' AND category = 'content'`
+(и вернуть обратно `true` после).
 
 ### ⚠️ Операторы Wordstat — пробовали, откатили (2026-09)
 
@@ -217,6 +217,20 @@ updated_at        timestamp
 UNIQUE (base_phrase_id, related_phrase_id, check_date)
 ```
 
+### `wordstat.check_list`
+Какие запросы проверяются (заменяет `.txt`-файлы, см. "Управление списком
+проверяемых фраз" выше).
+```
+id           serial    PK
+request_id   integer   FK → common.requests.request_id
+method       varchar   'dynamics' | 'top'
+category     varchar   'commercial' | 'content' | NULL (NULL для 'top')
+is_active    boolean   true = идёт на проверку
+created_at   timestamp
+updated_at   timestamp
+UNIQUE (request_id, method)
+```
+
 ### `common.wordstat_phrases`
 Справочник фраз для метода top. Фразы уникальны.
 ```
@@ -267,21 +281,46 @@ ORDER BY t.count DESC
 LIMIT 20;
 ```
 
-## 🛠️ Управление ключевыми словами
+## 🛠️ Управление списком проверяемых фраз
 
-Редактируйте `.txt` файлы в папке `keywords/` — изменения подхватятся
-автоматически, но только для **нового** периода (нового месяца для dynamics,
-нового дня для top). Если фраза добавлена в файл, когда очередь на текущий
-период уже создана, она попадёт в сбор только со следующего периода.
+⚠️ **С 2026-09-30 список фраз для `dynamics`/`top` хранится в таблице
+`wordstat.check_list`, не в `.txt`-файлах.** Файлы в `keywords/`
+(`dynamics_keywords_commercial.txt`, `dynamics_keywords_content.txt`,
+`top_keywords.txt`) больше не читаются коллектором — оставлены только как
+архив на случай отката (перенесены один раз скриптом
+`scripts/migrate-wordstat-checklist.js`). `dynamics_range_keywords.txt` не
+переносился — отдельный скрипт `wordstat-dynamics-range-daily.js` всё ещё
+читает его напрямую, не через `check_list`.
 
-Формат файла:
+```sql
+-- Добавить/включить фразу
+INSERT INTO wordstat.check_list (request_id, method, category, is_active)
+VALUES (
+    (SELECT request_id FROM common.requests WHERE request = 'ваш запрос'),
+    'dynamics', 'commercial', true
+)
+ON CONFLICT (request_id, method) DO UPDATE SET is_active = true, category = EXCLUDED.category;
+
+-- Отключить фразу (не удалять — просто снять с проверки)
+UPDATE wordstat.check_list SET is_active = false
+WHERE request_id = (SELECT request_id FROM common.requests WHERE request = 'ваш запрос')
+  AND method = 'dynamics';
+
+-- Список активных фраз по методу
+SELECT r.request, cl.category
+FROM wordstat.check_list cl
+JOIN common.requests r ON r.request_id = cl.request_id
+WHERE cl.method = 'dynamics' AND cl.is_active = true
+ORDER BY cl.category, r.request;
 ```
-# Это комментарий — игнорируется
-# Пустые строки тоже игнорируются
 
-ddos защита
-защита от ddos атак
-```
+`category` (`commercial`/`content`) — только для `method='dynamics'`, задаёт
+приоритет сбора (commercial обрабатывается раньше content, как и раньше с
+файлами). Для `method='top'` — `NULL`, не используется.
+
+Как и с файлами раньше: изменения подхватятся только для **нового** периода
+(нового месяца для dynamics, нового дня для top) — если очередь на текущий
+период уже создана, фраза попадёт в сбор со следующего.
 
 ## 🐛 Troubleshooting
 
