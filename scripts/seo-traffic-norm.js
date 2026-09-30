@@ -7,12 +7,18 @@
 // поэтому СНАЧАЛА пересчитайте индексы (node scripts/seasonality-index.js), если менялся список
 // аномалий reports.seasonality_events. Аномальные месяцы в уровень не входят, но сравниваются
 // с нормой (отклонение по ним — как раз то, что нужно в отчёте).
+// Надёжность: норма НЕ строится (и старые строки ряда удаляются), если
+//   - уровень соседних сезонов различается больше чем на --max-trend (по умолчанию 20%) —
+//     тренд неотличим от сезонности на двух сезонах, индекс описывает не сезон, а спад/рост;
+//   - коридор получился шире --max-band (по умолчанию 35%) — индекс не описывает ряд.
+// Обойти: --force-unreliable (в выводе останется предупреждение).
 // Результат: reports.seo_traffic_norm (схема — services/reports/norm_schema.sql, создаётся сама).
 //
 // Запуск:
 //   node scripts/seo-traffic-norm.js                          # все ряды, оба сайта
 //   node scripts/seo-traffic-norm.js --series seo_traffic_ga4 --site ru
 //   node scripts/seo-traffic-norm.js --level-months 6 --horizon 12 --dry-run
+//   node scripts/seo-traffic-norm.js --max-trend 0.3 --max-band 0.5 --force-unreliable
 
 require('dotenv').config();
 const fs = require('fs');
@@ -24,6 +30,8 @@ const SCHEMA_FILES = ['schema.sql', 'seasonality_schema.sql', 'norm_schema.sql']
 
 const MIN_BAND = 0.10;   // допуск не меньше ±10%
 const BAND_SIGMAS = 2;
+const DEFAULT_MAX_TREND = 0.20;   // допустимая разница уровней соседних сезонов
+const DEFAULT_MAX_BAND = 0.35;    // допустимая ширина коридора
 
 const arg = (name, def) => {
     const i = process.argv.indexOf(`--${name}`);
@@ -53,7 +61,7 @@ const addMonths = (s, n) => {
  * fallbackIndex: индекс того же сайта из другого источника (Метрика для GA4) — только для месяцев,
  *          по которым у основного ряда нет ни одного пригодного наблюдения (например, сбой GA4).
  */
-function computeNorm(monthly, index, { levelMonths = 12, horizon = 12, fallbackIndex = [] } = {}) {
+function computeNorm(monthly, index, { levelMonths = 12, horizon = 12, fallbackIndex = [], maxTrend = DEFAULT_MAX_TREND, maxBand = DEFAULT_MAX_BAND } = {}) {
     const toMap = arr => new Map(arr.map(r => [Number(r.month_num), {
         seasonal_index: r.seasonal_index === null ? null : Number(r.seasonal_index),
         seasons_used: Number(r.seasons_used)
@@ -80,6 +88,17 @@ function computeNorm(monthly, index, { levelMonths = 12, horizon = 12, fallbackI
     const resid = used.map(r => Number(r.value_per_day) / (level * idxOf(r.month).seasonal_index) - 1);
     const band = Math.max(MIN_BAND, BAND_SIGMAS * std(resid));
 
+    // Уровни сезонов из seasonality_monthly (season_baseline одинаков внутри сезона)
+    const seasonLevels = new Map();
+    for (const r of rows) if (r.season && r.season_baseline) seasonLevels.set(r.season, Number(r.season_baseline));
+    const lv = [...seasonLevels.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(x => x[1]);
+    let trend = 0;
+    for (let i = 1; i < lv.length; i++) trend = Math.max(trend, Math.abs(lv[i] / lv[i - 1] - 1));
+    const reasons = [];
+    if (trend > maxTrend) reasons.push(`уровень сезонов различается на ${(trend * 100).toFixed(0)}% (порог ${(maxTrend * 100).toFixed(0)}%) — тренд, а не сезонность`);
+    if (band > maxBand) reasons.push(`коридор ±${(band * 100).toFixed(0)}% шире порога ±${(maxBand * 100).toFixed(0)}%`);
+    const reliability = { trend, band, ok: reasons.length === 0, reason: reasons.join('; ') };
+
     const excluded = rows.filter(r => r.status.startsWith('anomaly')).length;
     const basis = `уровень ${level.toFixed(1)}/день по ${ref.length} пригодным мес. (${ref[0].month.slice(0, 7)}…${ref[ref.length - 1].month.slice(0, 7)}), коридор ±${(band * 100).toFixed(0)}%, аномальных месяцев исключено: ${excluded}`;
 
@@ -105,7 +124,7 @@ function computeNorm(monthly, index, { levelMonths = 12, horizon = 12, fallbackI
             expected_per_day: expPd,
             expected_total: expPd ? Math.round(expPd * days) : null,
             band_pct: band * 100,
-            expected_low: expPd ? Math.round(expPd * (1 - band) * days) : null,
+            expected_low: expPd ? Math.max(0, Math.round(expPd * (1 - band) * days)) : null,
             expected_high: expPd ? Math.round(expPd * (1 + band) * days) : null,
             actual_total: actualOk ? Number(actualRow.value) : null,
             actual_per_day: actualPd,
@@ -120,7 +139,7 @@ function computeNorm(monthly, index, { levelMonths = 12, horizon = 12, fallbackI
     const nFallback = out.filter(r => r.confidence === 'fallback').length;
     const fullBasis = basis + (nFallback ? `; индекс из другого источника (Метрика) для ${nFallback} мес., где у основного ряда нет пригодных наблюдений` : '');
     out.forEach(r => { r.basis = fullBasis; });
-    return { level, band, rows: out, basis: fullBasis };
+    return { level, band, rows: out, basis: fullBasis, reliability };
 }
 
 async function loadSeries(db, seriesFilter, siteFilter) {
@@ -171,6 +190,9 @@ async function main() {
     const levelMonths = Number(arg('level-months', 12));
     const horizon = Number(arg('horizon', 12));
     const dryRun = flag('dry-run');
+    const maxTrend = Number(arg('max-trend', DEFAULT_MAX_TREND));
+    const maxBand = Number(arg('max-band', DEFAULT_MAX_BAND));
+    const force = flag('force-unreliable');
 
     const db = new DatabaseManager('seo-traffic-norm');
     await db.connect();
@@ -181,7 +203,7 @@ async function main() {
 
         for (const { series, site } of list) {
             const monthly = (await db.query(
-                `SELECT to_char(month, 'YYYY-MM-DD') AS month, value, value_per_day, status
+                `SELECT to_char(month, 'YYYY-MM-DD') AS month, value, value_per_day, status, season, season_baseline
                  FROM reports.seasonality_monthly WHERE series = $1 AND site = $2 ORDER BY month`, [series, site])).rows;
             const index = (await db.query(
                 `SELECT month_num, seasonal_index, seasons_used FROM reports.seasonality_index WHERE series = $1 AND site = $2`, [series, site])).rows;
@@ -189,9 +211,15 @@ async function main() {
             const fbSeries = series.startsWith('seo_traffic_ga4') ? series.replace('seo_traffic_ga4', 'seo_traffic_metrika') : null;
             const fallbackIndex = fbSeries ? (await db.query(
                 `SELECT month_num, seasonal_index, seasons_used FROM reports.seasonality_index WHERE series = $1 AND site = $2`, [fbSeries, site])).rows : [];
-            const result = computeNorm(monthly, index, { levelMonths, horizon, fallbackIndex });
+            const result = computeNorm(monthly, index, { levelMonths, horizon, fallbackIndex, maxTrend, maxBand });
             if (!result) { console.warn(`\n${series}/${site}: нет пригодных месяцев для уровня — норма не строится`); continue; }
+            if (!result.reliability.ok && !force) {
+                console.log(`\n=== ${series} / ${site} ===\n⚠ норма не строится: ${result.reliability.reason}`);
+                if (!dryRun) await db.query('DELETE FROM reports.seo_traffic_norm WHERE series = $1 AND site = $2', [series, site]);
+                continue;
+            }
             printResult(series, site, result);
+            if (!result.reliability.ok) console.log(`⚠ ненадёжная норма (--force-unreliable): ${result.reliability.reason}`);
             if (!dryRun) await save(db, series, site, result);
         }
         if (dryRun) console.log('\n(dry-run: в БД ничего не записано)');
