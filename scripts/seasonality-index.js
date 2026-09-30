@@ -77,7 +77,10 @@ function computeSeasonality(rows, events, { minMonths = 10 } = {}) {
 
     // 1. Полнота месяцев
     for (const r of rows) {
-        if (!r.complete) status.set(r.month, { status: 'incomplete_month', note: 'месяц неполный (текущий или есть пропуски дней)' });
+        if (!r.complete) {
+            const cov = r.days !== undefined ? `: в данных ${r.days} из ${r.daysTotal} дней` : '';
+            status.set(r.month, { status: 'incomplete_month', note: `месяц неполный (текущий, начало периода или пропуски дней)${cov}` });
+        }
     }
 
     // 2. Авто-аномалии: отклонение от медианы соседних полных месяцев
@@ -220,7 +223,9 @@ async function loadRows(db, series, site, from) {
     return cover.rows.map(c => ({
         month: c.month,
         value: val.get(c.month) || 0,
-        complete: c.month < currentMonth && c.days === daysInMonth(c.month)
+        complete: c.month < currentMonth && c.days === daysInMonth(c.month),
+        days: c.days,
+        daysTotal: daysInMonth(c.month)
     }));
 }
 
@@ -272,6 +277,11 @@ async function save(db, series, site, result, note) {
 function printResult(series, site, result) {
     console.log(`\n=== ${series} / ${site} ===`);
     const flagged = result.monthly.filter(r => r.status.startsWith('anomaly'));
+    const incomplete = result.monthly.filter(r => r.status === 'incomplete_month');
+    if (incomplete.length) {
+        console.log('Неполные месяцы (исключены):');
+        for (const r of incomplete) console.log(`  ${r.month.slice(0, 7)}  ${r.note}`);
+    }
     const skipped = [...new Set(result.monthly.filter(r => r.status === 'incomplete_season').map(r => r.season))];
     if (skipped.length) console.log(`Сезоны без достаточного набора (не участвуют): ${skipped.join(', ')}`);
     if (flagged.length) {
