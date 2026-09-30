@@ -148,6 +148,10 @@ async function main() {
                 const status = error.response?.status;
                 const message = error.response?.data?.message || error.message;
                 console.log(`ОШИБКА ${status || ''}: ${message}`);
+                if (status === 401 || status === 403) {
+                    console.log('Ошибка доступа к API (ключ/права/оплата в Yandex Cloud) — остановка, повторять запросы бессмысленно.');
+                    break;
+                }
                 if (status === 429) {
                     console.log('Квота исчерпана — остановка. Запустите скрипт снова через час, собранные фразы будут пропущены.');
                     break;
