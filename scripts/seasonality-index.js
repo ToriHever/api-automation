@@ -129,6 +129,9 @@ function computeSeasonality(rows, events, { minMonths = 10 } = {}) {
         const i = monthIdx(r.month);
         for (const e of events) {
             if (i >= monthIdx(e.month_from) && i <= monthIdx(e.month_to)) {
+                // Неполный месяц остаётся неполным: ручное исключение не должно делать его «фактом»
+                // (его значение в день занижено, отклонение от нормы по нему было бы ложным).
+                if (status.get(r.month)?.status === 'incomplete_month') continue;
                 if (e.action === 'exclude') status.set(r.month, { status: 'anomaly_manual', note: e.description || 'ручной список' });
                 else if (status.get(r.month)?.status === 'anomaly_auto') status.delete(r.month);
             }
@@ -228,9 +231,11 @@ async function loadRows(db, series, site, from) {
             [source, site, channel, from]);
     const cover = await db.query(
         `SELECT to_char(date_trunc('month', event_date), 'YYYY-MM-DD') AS month, COUNT(DISTINCT event_date)::int AS days
-         FROM reports.traffic_daily WHERE source = $1 AND site = $2 AND event_date >= $3 GROUP BY 1 ORDER BY 1`,
+         FROM ${engine ? 'reports.traffic_organic_engine' : 'reports.traffic_daily'} WHERE source = $1 AND site = $2 AND event_date >= $3 GROUP BY 1 ORDER BY 1`,
         [source, site, from]
     );
+    // Для рядов по поисковикам полнота месяца считается по той же таблице, откуда берутся значения:
+    // иначе частично собранный месяц выглядел бы полным, а значение — заниженным.
     const val = new Map(values.rows.map(r => [r.month, Number(r.value)]));
     const now = new Date();
     const currentMonth = monthKey(now.getFullYear(), now.getMonth() + 1);

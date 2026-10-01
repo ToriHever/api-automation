@@ -31,6 +31,10 @@ CREATE TABLE IF NOT EXISTS reports.seo_traffic_norm (
     PRIMARY KEY (series, site, month)
 );
 
+-- Колонка добавлена после первого создания таблицы
+ALTER TABLE reports.seo_traffic_norm ADD COLUMN IF NOT EXISTS in_sample BOOLEAN NOT NULL DEFAULT false;
+COMMENT ON COLUMN reports.seo_traffic_norm.in_sample IS 'true — месяц участвовал в расчёте сезонного индекса и уровня: близость факта к норме по нему верна по построению и не подтверждает норму. Проверкой модели служат только месяцы с in_sample = false (аномальные, исключённые из расчёта, и новые).';
+
 COMMENT ON TABLE reports.seo_traffic_norm IS 'Норма трафика (и спроса) по месяцам: уровень × сезонный индекс × дни месяца, коридор допуска и отклонение факта. Норма зависит от списка аномальных месяцев (reports.seasonality_events) — при его изменении пересчитать сначала node scripts/seasonality-index.js, затем node scripts/seo-traffic-norm.js. Индексы посчитаны на 1–2 сезонах, поэтому норма ориентировочная; confidence = low там, где индекс по одному сезону.';
 COMMENT ON COLUMN reports.seo_traffic_norm.level_per_day IS 'Среднее по последним N пригодным месяцам значения в день, делённого на сезонный индекс месяца (N = --level-months, по умолчанию 12). Пригодные месяцы — status = used в reports.seasonality_monthly: полные, не аномальные.';
 COMMENT ON COLUMN reports.seo_traffic_norm.status IS 'in_norm — факт в коридоре нормы; below_norm / above_norm — ниже / выше; no_actual — у месяца нет полного факта; forecast — будущий месяц; no_norm — нет индекса для месяца.';

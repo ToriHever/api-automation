@@ -32,6 +32,7 @@ const MIN_BAND = 0.10;   // допуск не меньше ±10%
 const BAND_SIGMAS = 2;
 const DEFAULT_MAX_TREND = 0.20;   // допустимая разница уровней соседних сезонов
 const DEFAULT_MAX_BAND = 0.35;    // допустимая ширина коридора
+const MIN_LEVEL_MONTHS = 3;       // минимум месяцев последнего сезона для оценки уровня
 
 const arg = (name, def) => {
     const i = process.argv.indexOf(`--${name}`);
@@ -40,11 +41,6 @@ const arg = (name, def) => {
 const flag = name => process.argv.includes(`--${name}`);
 
 const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
-const std = a => {
-    if (a.length < 2) return 0;
-    const m = mean(a);
-    return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1));
-};
 const monthKey = (y, m) => `${y}-${String(m).padStart(2, '0')}-01`;
 const parseMonth = s => ({ y: Number(s.slice(0, 4)), m: Number(s.slice(5, 7)) });
 const daysIn = s => { const { y, m } = parseMonth(s); return new Date(y, m, 0).getDate(); };
@@ -81,12 +77,23 @@ function computeNorm(monthly, index, { levelMonths = 12, horizon = 12, fallbackI
     const used = rows.filter(r => r.status === 'used' && idxOf(r.month) && idxOf(r.month).seasonal_index > 0);
     if (!used.length) return null;
 
-    const ref = used.slice(-levelMonths);
+    // Уровень — по месяцам ПОСЛЕДНЕГО сезона. Месяц прошлого сезона даёт value/индекс = база того сезона
+    // (для месяцев, где индекс посчитан по одному сезону это тождество), то есть тянет уровень к устаревшей
+    // базе и занижает/завышает норму на величину тренда. Если в последнем сезоне мало пригодных месяцев —
+    // берём последние levelMonths пригодных (и пишем об этом в basis).
+    const latestSeason = used.map(r => r.season).filter(Boolean).sort().pop();
+    let ref = used.filter(r => r.season === latestSeason).slice(-levelMonths);
+    let levelNote = `по сезону ${latestSeason}`;
+    if (ref.length < MIN_LEVEL_MONTHS) {
+        ref = used.slice(-levelMonths);
+        levelNote = `по последним пригодным (в сезоне ${latestSeason} их меньше ${MIN_LEVEL_MONTHS} — уровень менее надёжен)`;
+    }
     const level = mean(ref.map(r => Number(r.value_per_day) / idxOf(r.month).seasonal_index));
 
-    // Разброс пригодных месяцев вокруг нормы -> коридор
+    // Разброс пригодных месяцев вокруг нормы -> коридор. Берём среднеквадратичное отклонение ОТ НУЛЯ
+    // (а не std вокруг среднего остатка): систематическое смещение, например тренд, тоже должно расширять коридор.
     const resid = used.map(r => Number(r.value_per_day) / (level * idxOf(r.month).seasonal_index) - 1);
-    const band = Math.max(MIN_BAND, BAND_SIGMAS * std(resid));
+    const band = Math.max(MIN_BAND, BAND_SIGMAS * Math.sqrt(mean(resid.map(x => x * x))));
 
     // Уровни сезонов из seasonality_monthly (season_baseline одинаков внутри сезона)
     const seasonLevels = new Map();
@@ -97,10 +104,13 @@ function computeNorm(monthly, index, { levelMonths = 12, horizon = 12, fallbackI
     const reasons = [];
     if (trend > maxTrend) reasons.push(`уровень сезонов различается на ${(trend * 100).toFixed(0)}% (порог ${(maxTrend * 100).toFixed(0)}%) — тренд, а не сезонность`);
     if (band > maxBand) reasons.push(`коридор ±${(band * 100).toFixed(0)}% шире порога ±${(maxBand * 100).toFixed(0)}%`);
+    // Если ни у одного месяца индекс не посчитан хотя бы по двум сезонам, норма копирует факт
+    // (индекс = факт / база сезона), то есть «в норме» было бы верно по построению.
+    if (![...idx.values()].some(p => p.seasons_used >= 2)) reasons.push('сезонный индекс посчитан по одному сезону — норма повторяет факт, проверить её нечем');
     const reliability = { trend, band, ok: reasons.length === 0, reason: reasons.join('; ') };
 
     const excluded = rows.filter(r => r.status.startsWith('anomaly')).length;
-    const basis = `уровень ${level.toFixed(1)}/день по ${ref.length} пригодным мес. (${ref[0].month.slice(0, 7)}…${ref[ref.length - 1].month.slice(0, 7)}), коридор ±${(band * 100).toFixed(0)}%, аномальных месяцев исключено: ${excluded}`;
+    const basis = `уровень ${level.toFixed(1)}/день ${levelNote}, ${ref.length} пригодных мес. (${ref[0].month.slice(0, 7)}…${ref[ref.length - 1].month.slice(0, 7)}), коридор ±${(band * 100).toFixed(0)}%, аномальных месяцев исключено: ${excluded}`;
 
     const build = (month, actualRow, isForecast) => {
         const ix = idxOf(month);
@@ -126,6 +136,8 @@ function computeNorm(monthly, index, { levelMonths = 12, horizon = 12, fallbackI
             band_pct: band * 100,
             expected_low: expPd ? Math.max(0, Math.round(expPd * (1 - band) * days)) : null,
             expected_high: expPd ? Math.round(expPd * (1 + band) * days) : null,
+            // in_sample: месяц участвовал в расчёте индекса/уровня — близость факта к норме по нему ничего не доказывает
+            in_sample: !!(actualRow && actualRow.status === 'used'),
             actual_total: actualOk ? Number(actualRow.value) : null,
             actual_per_day: actualPd,
             deviation_pct: dev === null ? null : dev * 100,
@@ -160,11 +172,11 @@ async function save(db, series, site, result) {
                 `INSERT INTO reports.seo_traffic_norm
                  (series, site, month, is_forecast, days_in_month, level_per_day, seasonal_index, seasons_used, confidence,
                   expected_per_day, expected_total, band_pct, expected_low, expected_high,
-                  actual_total, actual_per_day, deviation_pct, status, basis)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+                  actual_total, actual_per_day, deviation_pct, status, basis, in_sample)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
                 [series, site, r.month, r.is_forecast, r.days_in_month, r.level_per_day, r.seasonal_index, r.seasons_used, r.confidence,
                     r.expected_per_day, r.expected_total, r.band_pct, r.expected_low, r.expected_high,
-                    r.actual_total, r.actual_per_day, r.deviation_pct, r.status, r.basis]
+                    r.actual_total, r.actual_per_day, r.deviation_pct, r.status, r.basis, r.in_sample]
             );
         }
         await db.query('COMMIT');
@@ -177,10 +189,10 @@ async function save(db, series, site, result) {
 function printResult(series, site, result) {
     console.log(`\n=== ${series} / ${site} ===`);
     console.log(result.basis);
-    console.log('Месяц    факт      норма   (коридор)          откл.   статус');
+    console.log('Месяц    факт      норма   (коридор)          откл.   статус     (* — месяц входил в расчёт нормы, проверкой не является)');
     for (const r of result.rows.filter(x => !x.is_forecast || x.status === 'no_norm').slice(-14)) {
         console.log(`${r.month.slice(0, 7)}  ${String(r.actual_total ?? '—').padStart(7)}  ${String(r.expected_total ?? '—').padStart(7)}  (${r.expected_low ?? '—'}–${r.expected_high ?? '—'})`.padEnd(52)
-            + `${r.deviation_pct === null ? '   —' : (r.deviation_pct > 0 ? '+' : '') + r.deviation_pct.toFixed(0) + '%'}`.padStart(7) + `   ${r.status}${r.confidence === 'low' ? ' (низкая уверенность: 1 сезон)' : ''}${r.confidence === 'fallback' ? ' (индекс из Метрики)' : ''}`);
+            + `${r.deviation_pct === null ? '   —' : (r.deviation_pct > 0 ? '+' : '') + r.deviation_pct.toFixed(0) + '%'}`.padStart(7) + `${r.in_sample ? '*' : ' '}  ${r.status}${r.confidence === 'low' ? ' (низкая уверенность: 1 сезон)' : ''}${r.confidence === 'fallback' ? ' (индекс из Метрики)' : ''}`);
     }
     const fut = result.rows.filter(x => x.status === 'forecast').slice(0, 3);
     if (fut.length) console.log('Ближайшие месяцы, норма: ' + fut.map(r => `${r.month.slice(0, 7)} ${r.expected_total}`).join(', '));
