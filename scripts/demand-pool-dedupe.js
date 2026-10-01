@@ -35,13 +35,13 @@ const SERIES_SQL = `
     HAVING SUM(d.frequency) >= $1
 `;
 
-// Последний полный месяц: доля фраз в спросе продукта (для контроля концентрации)
+// Последний собранный месяц (в данных Wordstat): доля фраз в спросе продукта (для контроля концентрации)
 const SHARE_SQL = `
     SELECT dp.product, dp.request_id, r.request, d.frequency::bigint AS frequency
     FROM reports.demand_phrases dp
     JOIN common.requests r ON r.request_id = dp.request_id
     JOIN wordstat.dynamics_range d ON d.request_id = dp.request_id
-    WHERE dp.is_active AND d.month = date_trunc('month', current_date - interval '1 month')::date
+    WHERE dp.is_active AND d.month = (SELECT MAX(month) FROM wordstat.dynamics_range)
 `;
 
 /**
@@ -91,7 +91,7 @@ async function main() {
         // Концентрация спроса после чистки: доля трёх крупнейших фраз в последнем полном месяце
         const dropIds = new Set(drop.map(x => `${x.product}:${x.request_id}`));
         const share = (await db.query(SHARE_SQL)).rows.filter(r => !dropIds.has(`${r.product}:${r.request_id}`));
-        console.log('\nКонцентрация спроса (последний полный месяц, после чистки дублей):');
+        console.log('\nКонцентрация спроса (последний месяц в данных Wordstat, после чистки дублей):');
         for (const p of [...new Set(share.map(r => r.product))].sort()) {
             const list = share.filter(r => r.product === p).sort((a, b) => b.frequency - a.frequency);
             const sum = list.reduce((s, r) => s + Number(r.frequency), 0);
