@@ -70,7 +70,7 @@ for (const key of Object.keys(RAW)) {
     rows: norm.rows.map((r) => ({
       m: r.month.slice(0, 7), actual: r.actual_total, expected: r.expected_total, low: r.expected_low, high: r.expected_high,
       dev: r.deviation_pct === null ? null : +r.deviation_pct.toFixed(1), status: r.status, conf: r.confidence,
-      forecast: r.is_forecast, si: r.seasonal_index === null ? null : +r.seasonal_index.toFixed(3), seasons: r.seasons_used,
+      forecast: r.is_forecast, ins: r.in_sample, si: r.seasonal_index === null ? null : +r.seasonal_index.toFixed(3), seasons: r.seasons_used,
     })),
   });
 }

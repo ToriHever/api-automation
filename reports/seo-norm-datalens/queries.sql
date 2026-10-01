@@ -26,7 +26,7 @@ SELECT json_build_object(
                    json_agg(json_build_object(
                        'm', to_char(month, 'YYYY-MM'),
                        'actual', actual_total, 'expected', expected_total, 'low', expected_low, 'high', expected_high,
-                       'dev', deviation_pct, 'status', status, 'conf', confidence, 'forecast', is_forecast,
+                       'dev', deviation_pct, 'status', status, 'conf', confidence, 'forecast', is_forecast, 'ins', in_sample,
                        'si', ROUND(seasonal_index::numeric, 3), 'seasons', seasons_used
                    ) ORDER BY month) AS rows
             FROM reports.v_seo_norm_report

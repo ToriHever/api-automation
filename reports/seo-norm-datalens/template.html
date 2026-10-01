@@ -115,7 +115,7 @@ tr.fc td { color: var(--g-color-text-secondary); }
 
     <section class="dashboard-widget s9">
       <h2 class="w-title" id="tbl-title"></h2>
-      <p class="w-cap">* — месяц исключён из расчёта нормы (падение 2026); † — неполный месяц. Прогноз — только норма. Уверенность «низкая» — индекс месяца по одному сезону; «индекс из Метрики» — у основного ряда нет пригодных наблюдений этого месяца</p>
+      <p class="w-cap">* — месяц исключён из расчёта нормы (падение 2026); † — неполный месяц; ‡ — месяц входил в расчёт нормы, его близость к норме верна по построению и нормой не подтверждается (проверкой служат месяцы без ‡). Прогноз — только норма. Уверенность «низкая» — индекс месяца по одному сезону; «индекс из Метрики» — у основного ряда нет пригодных наблюдений этого месяца</p>
       <div class="tbl-wrap"><table id="tbl"></table></div>
     </section>
 
@@ -438,7 +438,7 @@ function renderTable() {
   const body = s.rows.map((r) => {
     const dev = r.dev == null ? '—' : `<span class="${r.dev < 0 ? 'neg-t' : 'pos-t'}">${fmtSigned(r.dev, 1)}%</span>`;
     const fc = r.forecast && r.actual == null;
-    return `<tr class="${fc ? 'fc' : ''}"><td>${mLabel(r.m)}${inAnomaly(r.m) ? ' *' : ''}${DATA.partial && DATA.partial[r.m] ? ' †' : ''}</td><td class="num">${fmtNum(r.actual)}</td><td class="num">${fmtNum(r.expected)}</td>`
+    return `<tr class="${fc ? 'fc' : ''}"><td>${mLabel(r.m)}${inAnomaly(r.m) ? ' *' : ''}${DATA.partial && DATA.partial[r.m] ? ' †' : ''}${r.ins ? ' ‡' : ''}</td><td class="num">${fmtNum(r.actual)}</td><td class="num">${fmtNum(r.expected)}</td>`
       + `<td class="num">${r.low == null ? '—' : fmtNum(r.low) + '–' + fmtNum(r.high)}</td><td class="num">${dev}</td>`
       + `<td>${STATUS[r.status] || r.status}</td><td class="num">${r.si == null ? '—' : fmtNum(r.si, 2)}</td><td>${CONF[r.conf] || r.conf}</td></tr>`;
   }).join('');

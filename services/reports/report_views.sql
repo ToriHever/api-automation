@@ -45,7 +45,8 @@ SELECT
     n.actual_per_day,
     ROUND(n.deviation_pct, 1) AS deviation_pct,
     n.status,
-    n.basis
+    n.basis,
+    n.in_sample
 FROM reports.seo_traffic_norm n;
 
 COMMENT ON VIEW reports.v_seo_norm_report IS 'Норма трафика (и спроса) по месяцам с подписями рядов для отчёта: факт, норма, коридор, отклонение, статус. Строки is_forecast = true — будущие месяцы (только норма). Ряды, для которых норма ненадёжна (тренд, широкий коридор), в seo_traffic_norm не записываются и здесь отсутствуют.';
