@@ -37,3 +37,20 @@ for (const [expected, list] of Object.entries(CASES)) {
         }
     });
 }
+
+const { findDuplicates } = require('../scripts/demand-pool-dedupe.js');
+
+test('дубли Wordstat (порядок слов, словоформы): остаётся одна фраза, приоритет у Топвизора', () => {
+    const same = 'sig-vds';   // одинаковая помесячная частотность
+    const rows = [
+        { product: 'VDS', request_id: 1, source: 'gsc', request: 'vds сервера', sig: same, total: 100 },
+        { product: 'VDS', request_id: 2, source: 'topvisor', request: 'серверы vds', sig: same, total: 100 },
+        { product: 'VDS', request_id: 3, source: 'gsc', request: 'сервер vds', sig: same, total: 100 },
+        { product: 'VDS', request_id: 4, source: 'gsc', request: 'vps', sig: 'other', total: 900 },
+        { product: 'DS', request_id: 5, source: 'gsc', request: 'vds сервера', sig: same, total: 100 }   // другой продукт — не дубль
+    ];
+    const { keep, drop } = findDuplicates(rows);
+    assert.deepStrictEqual(drop.map(r => r.request_id).sort(), [1, 3]);
+    assert.ok(keep.some(r => r.request_id === 2));
+    assert.ok(keep.some(r => r.request_id === 4) && keep.some(r => r.request_id === 5));
+});

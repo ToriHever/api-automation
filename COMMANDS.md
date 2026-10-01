@@ -219,6 +219,21 @@ node scripts/wordstat-product-demand.js           # собрать Wordstat по
 node scripts/seasonality-index.js --series demand --min-months 6   # только после полного сбора
 node scripts/seo-traffic-norm.js
 ```
+**Дубли фраз.** Wordstat не различает порядок слов и словоформы («vds сервер», «сервера vds», «сервер vds» дают одну и ту же частотность), поэтому
+в сумме они считались бы несколько раз. После каждого расширения пула и перед расчётом спроса:
+```bash
+node scripts/demand-pool-dedupe.js          # показать дубли и концентрацию спроса (доли крупнейших фраз)
+node scripts/demand-pool-dedupe.js --apply  # отключить дубли (is_active = false, обратимо)
+```
+
+**Спрос по бренду** (отдельный ряд `demand_Бренд`, фразы из `common.brand_keywords`):
+```bash
+node scripts/demand-pool-brand.js --apply
+node scripts/wordstat-product-demand.js     # собрать частотность
+node scripts/demand-pool-dedupe.js --apply  # отсечь одинаковые написания
+node scripts/seasonality-index.js --series demand_Бренд --min-months 6
+```
+
 Ручные решения по отдельным фразам — константа `OVERRIDES` в начале скрипта. Тесты разметки: `npm run test:demand-pool`.
 
 Ограничение: за два сезона в индекс частично попадает тренд роста/падения между сезонами. Индекс станет надёжнее по мере добавления сезонов (смотреть `seasons_used`).
