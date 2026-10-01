@@ -219,6 +219,11 @@ node scripts/wordstat-product-demand.js           # собрать Wordstat по
 node scripts/seasonality-index.js --series demand --min-months 6   # только после полного сбора
 node scripts/seo-traffic-norm.js
 ```
+**Как считается спрос.** По умолчанию — равновесный индекс (`--demand-weighting equal`): каждая фраза нормируется на своё среднее, все фразы
+входят с одинаковым весом (вью `reports.v_demand_index_monthly`, год к году — `reports.v_demand_index_yoy`). Сумма частотностей
+(`--demand-weighting sum`, вью `v_demand_product_monthly`) оставлена для сравнения: в продуктах с общей «головной» фразой она повторяет эту фразу
+(DS — «защищенный сервер» 92%, L7 — «защита сайта» 83%, VDS — «vps» 68%).
+
 **Дубли фраз.** Wordstat не различает порядок слов и словоформы («vds сервер», «сервера vds», «сервер vds» дают одну и ту же частотность), поэтому
 в сумме они считались бы несколько раз. После каждого расширения пула и перед расчётом спроса:
 ```bash
