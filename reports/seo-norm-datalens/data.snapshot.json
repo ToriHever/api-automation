@@ -1,8 +1,8 @@
 {
- "generated": "2026-09-30",
+ "generated": "2026-10-01",
  "source": "snapshot",
  "site": "ru",
- "note": "Срез на 2026-09-30: месячные значения из результатов запросов к прод-БД, норма пересчитана алгоритмом scripts/seo-traffic-norm.js.",
+ "note": "Срез на 2026-10-01: месячные значения трафика и спроса из результатов запросов к прод-БД, нормы трафика пересчитаны алгоритмом scripts/seo-traffic-norm.js, нормы спроса и сравнение год к году взяты из вывода скриптов на сервере.",
  "partial": {
   "2026-09": "данные за 29 из 30 дней"
  },
@@ -2586,6 +2586,627 @@
      "seasons": 1
     }
    ]
+  },
+  {
+   "key": "demand_DS",
+   "label": "Спрос Wordstat — DS",
+   "sort": 10,
+   "kind": "demand",
+   "level": 254.1,
+   "band": 22,
+   "basis": "равновесный индекс фраз (каждая фраза нормируется на своё среднее, одинаковый вес); норма построена на сентябре 2025 – марте 2026, апрель–сентябрь 2026 исключены как контрольный период",
+   "rows": [
+    {
+     "m": "2025-07",
+     "actual": 6405,
+     "expected": 6041,
+     "low": 4687,
+     "high": 7395,
+     "dev": 6,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2025-08",
+     "actual": 4733,
+     "expected": 4464,
+     "low": 3463,
+     "high": 5464,
+     "dev": 6,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2025-09",
+     "actual": 5798,
+     "expected": 5303,
+     "low": 4114,
+     "high": 6491,
+     "dev": 9,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2025-10",
+     "actual": 10383,
+     "expected": 8966,
+     "low": 6956,
+     "high": 10975,
+     "dev": 16,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2025-11",
+     "actual": 9076,
+     "expected": 8967,
+     "low": 6957,
+     "high": 10977,
+     "dev": 1,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2025-12",
+     "actual": 7974,
+     "expected": 8936,
+     "low": 6933,
+     "high": 10939,
+     "dev": -11,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-01",
+     "actual": 6443,
+     "expected": 6544,
+     "low": 5077,
+     "high": 8010,
+     "dev": -2,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-02",
+     "actual": 5681,
+     "expected": 7157,
+     "low": 5553,
+     "high": 8761,
+     "dev": -21,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-03",
+     "actual": 8541,
+     "expected": 8015,
+     "low": 6218,
+     "high": 9811,
+     "dev": 7,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-04",
+     "actual": 7599,
+     "expected": 9317,
+     "low": 7229,
+     "high": 11405,
+     "dev": -18,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-05",
+     "actual": 5827,
+     "expected": 7677,
+     "low": 5956,
+     "high": 9398,
+     "dev": -24,
+     "status": "below_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-06",
+     "actual": 5537,
+     "expected": 7596,
+     "low": 5893,
+     "high": 9298,
+     "dev": -27,
+     "status": "below_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-07",
+     "actual": 3618,
+     "expected": 6041,
+     "low": 4687,
+     "high": 7395,
+     "dev": -40,
+     "status": "below_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-08",
+     "actual": 3501,
+     "expected": 4464,
+     "low": 3463,
+     "high": 5464,
+     "dev": -22,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    }
+   ]
+  },
+  {
+   "key": "demand_L3-4",
+   "label": "Спрос Wordstat — L3-4",
+   "sort": 11,
+   "kind": "demand",
+   "level": 8.7,
+   "band": 14,
+   "basis": "равновесный индекс фраз (каждая фраза нормируется на своё среднее, одинаковый вес); норма построена на сентябре 2025 – марте 2026, апрель–сентябрь 2026 исключены как контрольный период",
+   "rows": [
+    {
+     "m": "2025-07",
+     "actual": 270,
+     "expected": 275,
+     "low": 236,
+     "high": 314,
+     "dev": -2,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2025-08",
+     "actual": 168,
+     "expected": 171,
+     "low": 147,
+     "high": 195,
+     "dev": -2,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2025-09",
+     "actual": 222,
+     "expected": 201,
+     "low": 173,
+     "high": 230,
+     "dev": 10,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2025-10",
+     "actual": 282,
+     "expected": 267,
+     "low": 230,
+     "high": 305,
+     "dev": 6,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2025-11",
+     "actual": 310,
+     "expected": 290,
+     "low": 250,
+     "high": 331,
+     "dev": 7,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2025-12",
+     "actual": 326,
+     "expected": 312,
+     "low": 268,
+     "high": 356,
+     "dev": 4,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-01",
+     "actual": 183,
+     "expected": 197,
+     "low": 169,
+     "high": 224,
+     "dev": -7,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-02",
+     "actual": 227,
+     "expected": 254,
+     "low": 218,
+     "high": 289,
+     "dev": -11,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-03",
+     "actual": 295,
+     "expected": 326,
+     "low": 280,
+     "high": 372,
+     "dev": -10,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-04",
+     "actual": 300,
+     "expected": 365,
+     "low": 314,
+     "high": 416,
+     "dev": -18,
+     "status": "below_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-05",
+     "actual": 224,
+     "expected": 365,
+     "low": 314,
+     "high": 416,
+     "dev": -39,
+     "status": "below_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-06",
+     "actual": 321,
+     "expected": 381,
+     "low": 328,
+     "high": 435,
+     "dev": -16,
+     "status": "below_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-07",
+     "actual": 169,
+     "expected": 275,
+     "low": 236,
+     "high": 314,
+     "dev": -39,
+     "status": "below_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-08",
+     "actual": 138,
+     "expected": 171,
+     "low": 147,
+     "high": 195,
+     "dev": -19,
+     "status": "below_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    }
+   ]
+  },
+  {
+   "key": "demand_Бренд",
+   "label": "Спрос Wordstat — Бренд",
+   "sort": 12,
+   "kind": "demand",
+   "level": 53.3,
+   "band": 19,
+   "basis": "равновесный индекс фраз (каждая фраза нормируется на своё среднее, одинаковый вес); норма построена на сентябре 2025 – марте 2026, апрель–сентябрь 2026 исключены как контрольный период",
+   "rows": [
+    {
+     "m": "2025-07",
+     "actual": 1695,
+     "expected": 1598,
+     "low": 1292,
+     "high": 1904,
+     "dev": 6,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2025-08",
+     "actual": 1569,
+     "expected": 1479,
+     "low": 1196,
+     "high": 1763,
+     "dev": 6,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2025-09",
+     "actual": 1727,
+     "expected": 1502,
+     "low": 1214,
+     "high": 1789,
+     "dev": 15,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2025-10",
+     "actual": 1655,
+     "expected": 1541,
+     "low": 1246,
+     "high": 1836,
+     "dev": 7,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2025-11",
+     "actual": 1490,
+     "expected": 1660,
+     "low": 1342,
+     "high": 1977,
+     "dev": -10,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2025-12",
+     "actual": 1574,
+     "expected": 1731,
+     "low": 1400,
+     "high": 2063,
+     "dev": -9,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-01",
+     "actual": 1348,
+     "expected": 1407,
+     "low": 1138,
+     "high": 1677,
+     "dev": -4,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-02",
+     "actual": 1673,
+     "expected": 1817,
+     "low": 1469,
+     "high": 2165,
+     "dev": -8,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-03",
+     "actual": 1750,
+     "expected": 1605,
+     "low": 1297,
+     "high": 1912,
+     "dev": 9,
+     "status": "in_norm",
+     "conf": "normal",
+     "forecast": false,
+     "ins": true,
+     "si": null,
+     "seasons": 2
+    },
+    {
+     "m": "2026-04",
+     "actual": 1499,
+     "expected": 1807,
+     "low": 1461,
+     "high": 2152,
+     "dev": -17,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-05",
+     "actual": 1168,
+     "expected": 1436,
+     "low": 1161,
+     "high": 1711,
+     "dev": -19,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-06",
+     "actual": 1694,
+     "expected": 1961,
+     "low": 1586,
+     "high": 2337,
+     "dev": -14,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-07",
+     "actual": 1588,
+     "expected": 1598,
+     "low": 1292,
+     "high": 1904,
+     "dev": -1,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    },
+    {
+     "m": "2026-08",
+     "actual": 1537,
+     "expected": 1479,
+     "low": 1196,
+     "high": 1763,
+     "dev": 4,
+     "status": "in_norm",
+     "conf": "low",
+     "forecast": false,
+     "ins": false,
+     "si": null,
+     "seasons": 1
+    }
+   ]
   }
  ],
  "skipped": [
@@ -2593,6 +3214,31 @@
    "key": "seo_traffic_ga4_yandex",
    "label": "Органика Яндекс — GA4",
    "reason": "уровень сезонов различается на 24% (порог 20%) — тренд, а не сезонность"
+  },
+  {
+   "key": "demand_L7",
+   "label": "Спрос Wordstat — L7",
+   "reason": "уровень сезонов различается на 25% (порог 20%) — тренд, а не сезонность; коридор ±55% шире порога ±35%"
+  },
+  {
+   "key": "demand_VDS",
+   "label": "Спрос Wordstat — VDS",
+   "reason": "уровень сезонов различается на 30%; коридор ±68%"
+  },
+  {
+   "key": "demand_Главная",
+   "label": "Спрос Wordstat — Главная",
+   "reason": "уровень сезонов различается на 20%; коридор ±43%"
+  },
+  {
+   "key": "demand_Хостинг",
+   "label": "Спрос Wordstat — Хостинг",
+   "reason": "уровень сезонов различается на 30%; коридор ±68%"
+  },
+  {
+   "key": "demand_Заказ атаки",
+   "label": "Спрос Wordstat — Заказ атаки",
+   "reason": "уровень сезонов различается на 44%; коридор ±132%"
   },
   {
    "key": "en (все ряды)",
@@ -2887,6 +3533,440 @@
    "other": 4.2,
    "days": 25,
    "days_in_month": 30
+  }
+ ],
+ "demand_yoy": [
+  {
+   "p": "L7",
+   "m": "2026-03",
+   "v": 61320,
+   "prev": 90286,
+   "yoy": -32.1,
+   "ok": true
+  },
+  {
+   "p": "L7",
+   "m": "2026-04",
+   "v": 63375,
+   "prev": 93344,
+   "yoy": -32.1,
+   "ok": true
+  },
+  {
+   "p": "L7",
+   "m": "2026-05",
+   "v": 51413,
+   "prev": 89597,
+   "yoy": -42.6,
+   "ok": true
+  },
+  {
+   "p": "L7",
+   "m": "2026-06",
+   "v": 56983,
+   "prev": 89199,
+   "yoy": -36.1,
+   "ok": true
+  },
+  {
+   "p": "L7",
+   "m": "2026-07",
+   "v": 46949,
+   "prev": 67860,
+   "yoy": -30.8,
+   "ok": true
+  },
+  {
+   "p": "L7",
+   "m": "2026-08",
+   "v": 39961,
+   "prev": 58132,
+   "yoy": -31.3,
+   "ok": true
+  },
+  {
+   "p": "DS",
+   "m": "2026-03",
+   "v": 8541,
+   "prev": 7919,
+   "yoy": 7.9,
+   "ok": true
+  },
+  {
+   "p": "DS",
+   "m": "2026-04",
+   "v": 7599,
+   "prev": 9879,
+   "yoy": -23.1,
+   "ok": true
+  },
+  {
+   "p": "DS",
+   "m": "2026-05",
+   "v": 5827,
+   "prev": 8140,
+   "yoy": -28.4,
+   "ok": true
+  },
+  {
+   "p": "DS",
+   "m": "2026-06",
+   "v": 5537,
+   "prev": 8054,
+   "yoy": -31.3,
+   "ok": true
+  },
+  {
+   "p": "DS",
+   "m": "2026-07",
+   "v": 3618,
+   "prev": 6405,
+   "yoy": -43.5,
+   "ok": true
+  },
+  {
+   "p": "DS",
+   "m": "2026-08",
+   "v": 3501,
+   "prev": 4733,
+   "yoy": -26,
+   "ok": true
+  },
+  {
+   "p": "L3-4",
+   "m": "2026-03",
+   "v": 295,
+   "prev": 350,
+   "yoy": -15.7,
+   "ok": true
+  },
+  {
+   "p": "L3-4",
+   "m": "2026-04",
+   "v": 300,
+   "prev": 358,
+   "yoy": -16.2,
+   "ok": true
+  },
+  {
+   "p": "L3-4",
+   "m": "2026-05",
+   "v": 224,
+   "prev": 358,
+   "yoy": -37.4,
+   "ok": true
+  },
+  {
+   "p": "L3-4",
+   "m": "2026-06",
+   "v": 321,
+   "prev": 374,
+   "yoy": -14.2,
+   "ok": true
+  },
+  {
+   "p": "L3-4",
+   "m": "2026-07",
+   "v": 169,
+   "prev": 270,
+   "yoy": -37.4,
+   "ok": true
+  },
+  {
+   "p": "L3-4",
+   "m": "2026-08",
+   "v": 138,
+   "prev": 168,
+   "yoy": -17.9,
+   "ok": true
+  },
+  {
+   "p": "VDS",
+   "m": "2026-03",
+   "v": 245437,
+   "prev": 252296,
+   "yoy": -2.7,
+   "ok": true
+  },
+  {
+   "p": "VDS",
+   "m": "2026-04",
+   "v": 242160,
+   "prev": 223416,
+   "yoy": 8.4,
+   "ok": true
+  },
+  {
+   "p": "VDS",
+   "m": "2026-05",
+   "v": 175349,
+   "prev": 201743,
+   "yoy": -13.1,
+   "ok": true
+  },
+  {
+   "p": "VDS",
+   "m": "2026-06",
+   "v": 169956,
+   "prev": 202112,
+   "yoy": -15.9,
+   "ok": true
+  },
+  {
+   "p": "VDS",
+   "m": "2026-07",
+   "v": 120926,
+   "prev": 205366,
+   "yoy": -41.1,
+   "ok": true
+  },
+  {
+   "p": "VDS",
+   "m": "2026-08",
+   "v": 127891,
+   "prev": 187800,
+   "yoy": -31.9,
+   "ok": true
+  },
+  {
+   "p": "Главная",
+   "m": "2026-03",
+   "v": 10085,
+   "prev": 14242,
+   "yoy": -29.2,
+   "ok": true
+  },
+  {
+   "p": "Главная",
+   "m": "2026-04",
+   "v": 10082,
+   "prev": 16256,
+   "yoy": -38,
+   "ok": true
+  },
+  {
+   "p": "Главная",
+   "m": "2026-05",
+   "v": 8128,
+   "prev": 14514,
+   "yoy": -44,
+   "ok": true
+  },
+  {
+   "p": "Главная",
+   "m": "2026-06",
+   "v": 8332,
+   "prev": 14879,
+   "yoy": -44,
+   "ok": true
+  },
+  {
+   "p": "Главная",
+   "m": "2026-07",
+   "v": 7246,
+   "prev": 11008,
+   "yoy": -34.2,
+   "ok": true
+  },
+  {
+   "p": "Главная",
+   "m": "2026-08",
+   "v": 6304,
+   "prev": 9406,
+   "yoy": -33,
+   "ok": true
+  },
+  {
+   "p": "Хостинг",
+   "m": "2026-03",
+   "v": 699,
+   "prev": 1389,
+   "yoy": -49.7,
+   "ok": true
+  },
+  {
+   "p": "Хостинг",
+   "m": "2026-04",
+   "v": 936,
+   "prev": 8084,
+   "yoy": -88.4,
+   "ok": true
+  },
+  {
+   "p": "Хостинг",
+   "m": "2026-05",
+   "v": 728,
+   "prev": 2774,
+   "yoy": -73.8,
+   "ok": true
+  },
+  {
+   "p": "Хостинг",
+   "m": "2026-06",
+   "v": 600,
+   "prev": 1428,
+   "yoy": -58,
+   "ok": true
+  },
+  {
+   "p": "Хостинг",
+   "m": "2026-07",
+   "v": 784,
+   "prev": 1266,
+   "yoy": -38.1,
+   "ok": true
+  },
+  {
+   "p": "Хостинг",
+   "m": "2026-08",
+   "v": 611,
+   "prev": 1672,
+   "yoy": -63.5,
+   "ok": true
+  },
+  {
+   "p": "Заказ атаки",
+   "m": "2026-03",
+   "v": 3938,
+   "prev": 4326,
+   "yoy": -9,
+   "ok": true
+  },
+  {
+   "p": "Заказ атаки",
+   "m": "2026-04",
+   "v": 4340,
+   "prev": 4052,
+   "yoy": 7.1,
+   "ok": true
+  },
+  {
+   "p": "Заказ атаки",
+   "m": "2026-05",
+   "v": 3055,
+   "prev": 3827,
+   "yoy": -20.2,
+   "ok": true
+  },
+  {
+   "p": "Заказ атаки",
+   "m": "2026-06",
+   "v": 3301,
+   "prev": 3519,
+   "yoy": -6.2,
+   "ok": true
+  },
+  {
+   "p": "Заказ атаки",
+   "m": "2026-07",
+   "v": 2721,
+   "prev": 3563,
+   "yoy": -23.6,
+   "ok": true
+  },
+  {
+   "p": "Заказ атаки",
+   "m": "2026-08",
+   "v": 2028,
+   "prev": 2682,
+   "yoy": -24.4,
+   "ok": true
+  },
+  {
+   "p": "Бренд",
+   "m": "2026-03",
+   "v": 1750,
+   "prev": 1538,
+   "yoy": 13.8,
+   "ok": true
+  },
+  {
+   "p": "Бренд",
+   "m": "2026-04",
+   "v": 1499,
+   "prev": 1916,
+   "yoy": -21.8,
+   "ok": true
+  },
+  {
+   "p": "Бренд",
+   "m": "2026-05",
+   "v": 1168,
+   "prev": 1523,
+   "yoy": -23.3,
+   "ok": true
+  },
+  {
+   "p": "Бренд",
+   "m": "2026-06",
+   "v": 1694,
+   "prev": 2080,
+   "yoy": -18.6,
+   "ok": true
+  },
+  {
+   "p": "Бренд",
+   "m": "2026-07",
+   "v": 1588,
+   "prev": 1695,
+   "yoy": -6.3,
+   "ok": true
+  },
+  {
+   "p": "Бренд",
+   "m": "2026-08",
+   "v": 1537,
+   "prev": 1569,
+   "yoy": -2,
+   "ok": true
+  },
+  {
+   "p": "Контроль",
+   "m": "2026-03",
+   "v": 369801402,
+   "prev": 395591561,
+   "yoy": -6.5,
+   "ok": true
+  },
+  {
+   "p": "Контроль",
+   "m": "2026-04",
+   "v": 378894646,
+   "prev": 365249341,
+   "yoy": 3.7,
+   "ok": true
+  },
+  {
+   "p": "Контроль",
+   "m": "2026-05",
+   "v": 379253362,
+   "prev": 354779675,
+   "yoy": 6.9,
+   "ok": true
+  },
+  {
+   "p": "Контроль",
+   "m": "2026-06",
+   "v": 394315339,
+   "prev": 370821144,
+   "yoy": 6.3,
+   "ok": true
+  },
+  {
+   "p": "Контроль",
+   "m": "2026-07",
+   "v": 432959103,
+   "prev": 391424582,
+   "yoy": 10.6,
+   "ok": true
+  },
+  {
+   "p": "Контроль",
+   "m": "2026-08",
+   "v": 414587660,
+   "prev": 377103043,
+   "yoy": 9.9,
+   "ok": true
   }
  ]
 }

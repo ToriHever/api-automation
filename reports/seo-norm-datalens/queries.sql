@@ -18,7 +18,7 @@ SELECT json_build_object(
 
     -- ряды нормы: строки по месяцам, факт против нормы и коридора
     'series', (
-        SELECT json_agg(s ORDER BY s.sort)
+        SELECT json_agg(s ORDER BY s.sort, s.label)
         FROM (
             SELECT series AS key, MAX(series_label) AS label, MAX(sort_order) AS sort, MAX(kind) AS kind,
                    ROUND(MAX(level_per_day)::numeric, 1) AS level, ROUND(MAX(band_pct)::numeric, 1) AS band,
@@ -30,9 +30,19 @@ SELECT json_build_object(
                        'si', ROUND(seasonal_index::numeric, 3), 'seasons', seasons_used
                    ) ORDER BY month) AS rows
             FROM reports.v_seo_norm_report
-            WHERE site = 'ru' AND kind = 'traffic'
+            WHERE site = 'ru' AND (kind = 'traffic' OR (kind = 'demand' AND series <> 'demand_Контроль'))
             GROUP BY series
         ) s
+    ),
+
+    -- спрос Wordstat год к году (равновесный индекс фраз), последние 8 месяцев; продукты и ряд «Контроль»
+    'demand_yoy', (
+        SELECT json_agg(d ORDER BY d.p, d.m)
+        FROM (
+            SELECT product AS p, to_char(month, 'YYYY-MM') AS m, frequency AS v, frequency_prev_year AS prev, yoy_pct AS yoy, comparable AS ok
+            FROM reports.v_demand_index_yoy
+            WHERE month >= date_trunc('month', current_date) - INTERVAL '8 months' AND frequency_prev_year IS NOT NULL
+        ) d
     ),
 
     -- органика по поисковикам, сессий/визитов в месяц (GA4 и Метрика)
