@@ -51,6 +51,8 @@ const SYNC_PHRASES_SQL = `
       AND g.name IN ('L3-4', 'L7', 'VDS/VPS', 'DS', 'Хостинг', 'Главная')
       -- на «Главную» относим только коммерческие запросы (common.type_request: 1 = Коммерческий)
       AND (g.name <> 'Главная' OR r.type_request_id = 1)
+      -- фразы, вынесенные в отдельный ряд «Заказ атаки» (scripts/demand-pool-from-gsc.js), в продукты не возвращаем
+      AND NOT EXISTS (SELECT 1 FROM reports.demand_phrases a WHERE a.request_id = r.request_id AND a.product = 'Заказ атаки')
     ON CONFLICT (request_id, product) DO NOTHING
 `;
 
