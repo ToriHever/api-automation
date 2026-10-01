@@ -231,6 +231,13 @@ node scripts/demand-pool-dedupe.js          # показать дубли и к�
 node scripts/demand-pool-dedupe.js --apply  # отключить дубли (is_active = false, обратимо)
 ```
 
+**Контрольная корзина** (ряд `demand_Контроль`: 12 общих запросов, не связанных с темой): если она упала так же, как продуктовые ряды,
+изменение спроса — общий эффект Яндекса/Wordstat, а не рынок защиты.
+```bash
+node scripts/demand-pool-control.js --apply
+node scripts/wordstat-product-demand.js
+```
+
 **Спрос по бренду** (отдельный ряд `demand_Бренд`, фразы из `common.brand_keywords`):
 ```bash
 node scripts/demand-pool-brand.js --apply

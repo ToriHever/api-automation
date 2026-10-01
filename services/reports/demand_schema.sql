@@ -56,7 +56,7 @@ COMMENT ON VIEW reports.v_demand_yoy IS 'Спрос Wordstat по продукт
 -- «головной» фразой повторяет её одну: DS на 92% «защищенный сервер», L7 на 83% «защита сайта», VDS на 68% «vps».
 -- Здесь каждая фраза нормируется на своё среднее по всем месяцам и входит с одинаковым весом: индекс месяца =
 -- среднее относительных значений фраз. Для читаемости индекс переводится в «запросы в месяц»: умножается на сумму
--- средних фраз пула, то есть на среднем месяце равен обычной сумме. Берутся фразы со средней частотностью >= 100
+-- средних фраз пула, то есть на среднем месяце равен обычной сумме. Берутся фразы со средней частотностью >= 30
 -- (мелкие шумят). Формат колонок как у v_demand_product_monthly (product, month, frequency, phrases) + idx (100 = средний месяц).
 CREATE OR REPLACE VIEW reports.v_demand_index_monthly AS
 WITH f AS (
@@ -68,7 +68,7 @@ WITH f AS (
 m AS (
     SELECT product, request_id, AVG(frequency) AS mean_f
     FROM f GROUP BY product, request_id
-    HAVING AVG(frequency) >= 100
+    HAVING AVG(frequency) >= 30
 ),
 tot AS (
     SELECT product, SUM(mean_f) AS total_mean FROM m GROUP BY product
