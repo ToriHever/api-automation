@@ -34,3 +34,20 @@ FROM reports.demand_phrases dp
 JOIN wordstat.dynamics_range d ON d.request_id = dp.request_id
 WHERE dp.is_active
 GROUP BY dp.product, d.month;
+
+-- Спрос год к году: месяц против того же месяца год назад. Для спроса при двух сезонах данных это надёжнее нормы
+-- (каждый месяц сравнивается с реальным значением, а не с моделью, на которой он сам обучен).
+-- comparable = true, если в обоих месяцах в сумму вошло одинаковое число фраз (иначе сравнение нечестное).
+CREATE OR REPLACE VIEW reports.v_demand_yoy AS
+SELECT cur.product,
+       cur.month,
+       cur.frequency,
+       prev.frequency AS frequency_prev_year,
+       ROUND(100.0 * (cur.frequency::numeric / NULLIF(prev.frequency, 0) - 1), 1) AS yoy_pct,
+       (cur.phrases = prev.phrases) AS comparable,
+       cur.phrases
+FROM reports.v_demand_product_monthly cur
+LEFT JOIN reports.v_demand_product_monthly prev
+       ON prev.product = cur.product AND prev.month = (cur.month - INTERVAL '1 year')::date;
+
+COMMENT ON VIEW reports.v_demand_yoy IS 'Спрос Wordstat по продуктам: месяц к тому же месяцу год назад (yoy_pct, %). Сравнивать только строки с comparable = true.';
