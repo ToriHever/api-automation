@@ -26,7 +26,8 @@
 // Запуск:
 //   node scripts/seasonality-index.js
 //   node scripts/seasonality-index.js --series seo_traffic_ga4 --site ru
-//   node scripts/seasonality-index.js --series demand          # все продукты спроса
+//   node scripts/seasonality-index.js --series demand          # все продукты спроса (равновесный индекс фраз)
+//   node scripts/seasonality-index.js --series demand --demand-weighting sum   # спрос суммой частотностей (для сравнения)
 //   node scripts/seasonality-index.js --series engines         # органика по Яндексу / Google
 //   node scripts/seasonality-index.js --series demand_L7
 //   node scripts/seasonality-index.js --from 2024-09-16 --min-months 10 --dry-run   # без записи в БД
@@ -251,11 +252,14 @@ async function loadRows(db, series, site, from) {
 
 // Ряд спроса по продукту. Месяц полный, если он уже закончился и в нём есть данные по всем
 // собранным фразам продукта (иначе — частичный сбор, месяц не участвует).
-async function loadDemandRows(db, product) {
+// weighting: 'equal' — равновесный индекс фраз (reports.v_demand_index_monthly, по умолчанию: ни одна общая
+// фраза не заглушает остальные), 'sum' — сумма частотностей (reports.v_demand_product_monthly, для сравнения).
+async function loadDemandRows(db, product, weighting = 'equal') {
+    const view = weighting === 'sum' ? 'reports.v_demand_product_monthly' : 'reports.v_demand_index_monthly';
     const res = await db.query(
         `SELECT to_char(date_trunc('month', month), 'YYYY-MM-DD') AS month,
                 SUM(frequency)::bigint AS value, MAX(phrases)::int AS phrases
-         FROM reports.v_demand_product_monthly WHERE product = $1 GROUP BY 1 ORDER BY 1`,
+         FROM ${view} WHERE product = $1 GROUP BY 1 ORDER BY 1`,
         [product]
     );
     const maxPhrases = Math.max(0, ...res.rows.map(r => r.phrases));
@@ -333,6 +337,8 @@ async function main() {
     const seriesArg = arg('series');
     const sites = arg('site') ? [arg('site')] : ['ru', 'en'];
     const dryRun = flag('dry-run');
+    const demandWeighting = arg('demand-weighting', 'equal');
+    if (!['equal', 'sum'].includes(demandWeighting)) throw new Error('--demand-weighting: equal | sum');
 
     const db = new DatabaseManager('seasonality-index');
     await db.connect();
@@ -351,7 +357,7 @@ async function main() {
         else if (seriesArg) seriesList = [seriesArg];
 
         const trafficNote = `Данные с ${from} (разделение ru/en). Сезоны по 12 мес., база = общие для всех сезонов полные месяцы; неполные месяцы и аномалии исключены`;
-        const demandNote = 'Спрос Wordstat (Россия) по фразам продукта, все собранные месяцы. Сезоны по 12 мес., база = общие для всех сезонов полные месяцы; неполные месяцы и аномалии исключены';
+        const demandNote = `Спрос Wordstat (Россия) по фразам продукта (${demandWeighting === 'sum' ? 'сумма частотностей' : 'равновесный индекс фраз'}), все собранные месяцы. Сезоны по 12 мес., база = общие для всех сезонов полные месяцы; неполные месяцы и аномалии исключены`;
 
         for (const series of seriesList) {
             const isDemand = series.startsWith('demand_');
@@ -364,7 +370,7 @@ async function main() {
                     if (pend.pending) console.warn(`\n⚠ ${series}: не собраны ${pend.pending} из ${pend.total} фраз — спрос неполный`);
                 }
                 const rows = isDemand
-                    ? await loadDemandRows(db, series.slice('demand_'.length))
+                    ? await loadDemandRows(db, series.slice('demand_'.length), demandWeighting)
                     : await loadRows(db, series, site, from);
                 if (!rows.length) { console.warn(`\n${series}/${site}: нет данных ${isDemand ? '(спрос ещё не собран: scripts/wordstat-product-demand.js)' : `в reports.traffic_daily с ${from}`}`); continue; }
                 if (!isDemand && SERIES[series].engine && rows.every(r => r.value === 0)) {
