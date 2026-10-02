@@ -17,6 +17,15 @@ const dataFile = path.resolve(__dirname, opt('--data') || 'data.snapshot.json');
 const data = JSON.parse(fs.readFileSync(dataFile, 'utf8').replace(/^﻿/, ''));
 for (const k of ['series', 'engines', 'segments', 'generated']) if (!data[k]) throw new Error(`data: нет поля "${k}"`);
 
+// Покупки: из БД приходят помесячные строки (queries.sql), диапазоны считает тот же код, что и scripts/purchases-kpi.js
+if (!data.purchases && data.purchases_monthly && data.purchases_monthly.length) {
+  const purch = require('../../scripts/purchases-kpi.js');
+  data.purchases = purch.buildBlock(
+    data.purchases_monthly.map((r) => ({ month: r.m, product: r.product, payers: +r.payers, revenue: +r.revenue, invoices: +r.invoices })),
+    (data.purchases_overall || []).map((r) => ({ month: r.m, payersOrganic: +r.payers_organic, revenue: +r.revenue, invoices: +r.invoices })));
+  delete data.purchases_monthly; delete data.purchases_overall;
+}
+
 // Токены и общий CSS переиспользуем из соседнего отчёта, чтобы не дублировать 60 КБ
 const assets = path.join(__dirname, '..', 'gsc-datalens', 'assets');
 const read = (f) => fs.readFileSync(f, 'utf8');
