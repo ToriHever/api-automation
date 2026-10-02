@@ -49,13 +49,22 @@ GROUP BY 1, 2, 3, 4, 5;
 
 COMMENT ON VIEW reports.v_traffic_landing_group_monthly IS 'Органические сессии по странице входа, сгруппированные по продуктовым группам / информационным разделам / прочему. Страница с трафиком, но без группы, попадает в «Прочее».';
 
--- Связь с покупками по кварталам (GA4, все поисковики, только ru): конверсия на 1000 сессий на страницы группы.
--- Покупатель мог начать с блога, поэтому «Информационные» показаны отдельно и в конверсию продукта не входят.
+-- Месяцы GA4 (ru) с полными данными: сбои сбора (например 30.07–17.08.2025) делают месяц неполным
+CREATE OR REPLACE VIEW reports.v_ga4_months_complete AS
+SELECT month, (MAX(days_with_data) >= EXTRACT(DAY FROM (month + INTERVAL '1 month' - INTERVAL '1 day'))) AS complete
+FROM reports.v_organic_engine_monthly
+WHERE source = 'ga4' AND site = 'ru'
+GROUP BY month;
+
+-- Связь с покупками по кварталам (GA4, все поисковики, только ru): сессии на страницы группы и плательщики группы.
+-- Это НЕ конверсия страницы: покупатель мог прийти с главной или из блога. «Информационные» в продукт не входят.
 CREATE OR REPLACE VIEW reports.v_purchases_vs_traffic_quarterly AS
 WITH tr AS (
-    SELECT date_trunc('quarter', month)::date AS quarter, grp, SUM(sessions) AS sessions, COUNT(DISTINCT month) AS months
-    FROM reports.v_traffic_landing_group_monthly
-    WHERE source = 'ga4' AND site = 'ru'
+    SELECT date_trunc('quarter', t.month)::date AS quarter, t.grp, SUM(t.sessions) AS sessions,
+           COUNT(DISTINCT t.month) AS months, COUNT(DISTINCT t.month) FILTER (WHERE m.complete) AS months_ok
+    FROM reports.v_traffic_landing_group_monthly t
+    LEFT JOIN reports.v_ga4_months_complete m ON m.month = t.month
+    WHERE t.source = 'ga4' AND t.site = 'ru'
     GROUP BY 1, 2
 ),
 pu AS (
@@ -67,7 +76,33 @@ pu AS (
 SELECT tr.quarter, tr.grp, tr.sessions, pu.payers, pu.revenue_rub,
        ROUND(1000.0 * pu.payers / NULLIF(tr.sessions, 0), 2) AS payers_per_1000,
        ROUND(pu.revenue_rub / NULLIF(tr.sessions, 0) * 1000, 0) AS revenue_per_1000,
-       (tr.months = 3 AND pu.months = 3) AS complete
+       (tr.months = 3 AND tr.months_ok = 3 AND pu.months = 3) AS complete
 FROM tr JOIN pu ON pu.quarter = tr.quarter AND pu.grp = tr.grp;
 
-COMMENT ON VIEW reports.v_purchases_vs_traffic_quarterly IS 'Квартал × группа: органические сессии на страницы группы (GA4, ru), новые плательщики и сумма из purchases_monthly, конверсия на 1000 сессий. complete = все 3 месяца есть в обоих источниках.';
+COMMENT ON VIEW reports.v_purchases_vs_traffic_quarterly IS 'Квартал × группа: органические сессии на страницы группы (GA4, ru), новые плательщики и сумма из purchases_monthly. payers_per_1000 — не конверсия страницы (покупатель мог прийти с главной/блога), а соотношение для динамики. complete = все 3 месяца есть и GA4 в них без сбоев сбора.';
+
+-- Весь сайт по кварталам: сессии на коммерческие страницы (Главная + продуктовые), на информационные и все новые плательщики из organic
+CREATE OR REPLACE VIEW reports.v_traffic_vs_payers_site_quarterly AS
+WITH tr AS (
+    SELECT date_trunc('quarter', t.month)::date AS quarter,
+           SUM(t.sessions) FILTER (WHERE t.grp = 'Главная') AS home,
+           SUM(t.sessions) FILTER (WHERE t.grp IN ('L7', 'L3-4', 'DS', 'VDS', 'Хостинг')) AS product_pages,
+           SUM(t.sessions) FILTER (WHERE t.grp = 'Информационные') AS informational,
+           SUM(t.sessions) FILTER (WHERE t.grp = 'Прочее') AS other,
+           COUNT(DISTINCT t.month) AS months, COUNT(DISTINCT t.month) FILTER (WHERE m.complete) AS months_ok
+    FROM reports.v_traffic_landing_group_monthly t
+    LEFT JOIN reports.v_ga4_months_complete m ON m.month = t.month
+    WHERE t.source = 'ga4' AND t.site = 'ru'
+    GROUP BY 1
+),
+pu AS (
+    SELECT date_trunc('quarter', month)::date AS quarter, SUM(new_payers_organic) AS payers, SUM(revenue_organic_rub) AS revenue_rub,
+           COUNT(DISTINCT month) AS months
+    FROM reports.purchases_overall_monthly WHERE revenue_organic_rub IS NOT NULL
+    GROUP BY 1
+)
+SELECT tr.quarter, tr.home, tr.product_pages, tr.informational, tr.other, pu.payers, pu.revenue_rub,
+       (tr.months = 3 AND tr.months_ok = 3 AND pu.months = 3) AS complete
+FROM tr JOIN pu ON pu.quarter = tr.quarter;
+
+COMMENT ON VIEW reports.v_traffic_vs_payers_site_quarterly IS 'Квартал: органические сессии GA4 по типу страницы входа и все новые плательщики из organic. Нужна, чтобы увидеть, какой трафик связан с покупками.';

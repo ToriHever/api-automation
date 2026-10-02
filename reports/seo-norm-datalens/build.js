@@ -23,7 +23,14 @@ if (!data.purchases && data.purchases_monthly && data.purchases_monthly.length) 
   data.purchases = purch.buildBlock(
     data.purchases_monthly.map((r) => ({ month: r.m, product: r.product, payers: +r.payers, revenue: +r.revenue, invoices: +r.invoices })),
     (data.purchases_overall || []).map((r) => ({ month: r.m, payersOrganic: +r.payers_organic, revenue: +r.revenue, invoices: +r.invoices })));
-  delete data.purchases_monthly; delete data.purchases_overall;
+  if (data.traffic_landing_monthly && data.traffic_landing_monthly.length) {
+    // месяцы GA4 со сбоем сбора — те, где days_with_data меньше дней в месяце (reports.v_ga4_months_complete)
+    const gap = new Set((data.ga4_incomplete_months || []));
+    data.purchases.landing = purch.buildLandingBlock(
+      data.traffic_landing_monthly.map((r) => ({ month: r.m, grp: r.grp, sessions: +r.sessions })),
+      (data.purchases_overall || []).map((r) => ({ month: r.m, payersOrganic: +r.payers_organic })), gap);
+  }
+  delete data.purchases_monthly; delete data.purchases_overall; delete data.traffic_landing_monthly; delete data.ga4_incomplete_months;
 }
 
 // Токены и общий CSS переиспользуем из соседнего отчёта, чтобы не дублировать 60 КБ

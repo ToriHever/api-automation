@@ -145,12 +145,18 @@ tr.fc td { color: var(--g-color-text-secondary); }
       <div class="tbl-wrap"><table id="pu-tbl-p"></table></div>
       <h3 class="w-sub" style="margin-top:14px">Сумма оплат первого дня, тыс. ₽</h3>
       <div class="tbl-wrap"><table id="pu-tbl-r"></table></div>
+      <div id="pu-landing" style="display:none">
+        <h3 class="w-sub" style="margin-top:14px">Какой органический трафик связан с покупками: сессии по странице входа (GA4) и все новые плательщики</h3>
+        <p class="w-cap">Сессии, начавшиеся на странице данного типа. Последняя колонка — изменение последнего квартала к первому в таблице</p>
+        <div class="tbl-wrap"><table id="pu-tbl-l"></table></div>
+      </div>
     </section>
 
     <section class="dashboard-widget text s9" id="pu-text" style="display:none">
       <h2 class="w-title">Покупки: что показывают данные</h2>
       <ul>
         <li><b>Общего падения покупок нет.</b> Новые плательщики из organic за октябрь 2025 – сентябрь 2026: 499 против 453 годом ранее (+10%), сумма оплат первого дня 8,6 против 8,3 млн ₽ (+4%). Падение органического трафика с апреля в покупки пока не перешло; вероятно, потерян в основном информационный трафик, который почти не покупает.</li>
+        <li><b>Трафик и покупки.</b> Сессии на информационные страницы (блог, terms, tutorials и др.) упали на 53% (23,2 → 10,9 тыс. за квартал), а сессии на главную (≈8,7–9,5 тыс.) и страницы продуктов (≈1,4–1,6 тыс.) почти не изменились. Новые плательщики за это время не упали. Падение органики — это информационный трафик, и покупки он, судя по данным, не определяет. Сессии на продуктовые страницы групп — это 1,4–1,6 тыс. в квартал против 85–104 плательщиков L7: покупатели в основном приходят не на страницу продукта, а с главной и других страниц, поэтому «конверсию страницы» из этих данных считать нельзя.</li>
         <li><b>L7</b> — основа: около двух третей суммы. Во втором квартале 2026 был выше диапазона (104 плательщика, 1,87 млн ₽), в третьем сумма (1,05 млн ₽) у нижней границы. KPI можно ставить.</li>
         <li><b>VDS:</b> плательщиков больше, чек ниже (≈29 → 21 тыс. ₽ за год); третий квартал 2026 вдвое выше третьего квартала 2025 по сумме.</li>
         <li><b>Хостинг</b> — реальный провал: 107 → 39 плательщиков за год (−64%), 1,02 → 0,28 млн ₽. Спад идёт с октября 2025 и с апрельским падением трафика не связан (часть — аномальный январь 2025). Диапазон построен уже на сниженной базе и не говорит, что это нормально.</li>
@@ -545,7 +551,24 @@ function renderPurchases() {
   draw('pu-tbl-r', (c) => c.revenue, (c) => c.rr, 'sr', 1000);
 }
 
-function renderAll() { renderKpis(); renderNorm(); renderDev(); renderEngines(); renderSegments(); renderTable(); renderDemandYoy(); renderPurchases(); }
+function renderPurchasesLanding() {
+  const L = DATA.purchases && DATA.purchases.landing, box = document.getElementById('pu-landing');
+  if (!L || !L.quarters || L.quarters.length < 2) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  const qs = L.quarters, first = qs[0], last = qs[qs.length - 1];
+  const rows = [['Информационные страницы (блог, terms, tutorials…)', 'info'], ['Главная страница', 'home'], ['Продуктовые страницы (L7, L3-4, DS, VDS, Хостинг)', 'prod'], ['Прочие страницы', 'other'], ['Новые плательщики (весь сайт)', 'payers']];
+  const head = '<tr><th>Показатель</th>' + qs.map((c) => `<th class="num">${QL(c.q)}</th>`).join('') + `<th class="num">${QL(last.q)} к ${QL(first.q)}</th></tr>`;
+  const body = rows.map(([label, k]) => {
+    const ch = first[k] ? (last[k] / first[k] - 1) * 100 : null;
+    const cls = ch == null ? '' : (ch <= -15 ? 'neg-t' : ch >= 15 ? 'pos-t' : '');
+    const sep = k === 'payers' ? 'border-top:2px solid var(--g-color-line-generic-solid)' : '';
+    return `<tr style="${sep}"><td><b>${esc(label)}</b></td>` + qs.map((c) => `<td class="num">${fmtNum(c[k])}</td>`).join('')
+      + `<td class="num"><span class="${cls}" style="${cls ? 'font-weight:600' : ''}">${ch == null ? '—' : fmtSigned(ch, 0) + '%'}</span></td></tr>`;
+  }).join('');
+  document.getElementById('pu-tbl-l').innerHTML = head + body;
+}
+
+function renderAll() { renderKpis(); renderNorm(); renderDev(); renderEngines(); renderSegments(); renderTable(); renderDemandYoy(); renderPurchases(); renderPurchasesLanding(); }
 renderHead();
 renderAll();
 document.getElementById('series-seg').addEventListener('click', (e) => {
