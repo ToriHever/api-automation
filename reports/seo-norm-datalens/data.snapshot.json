@@ -3992,7 +3992,9 @@
        "h": 1402528
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 48,
+      "prevRevenue": 1006439
      },
      {
       "q": "2026-Q1",
@@ -4009,7 +4011,9 @@
        "h": 1382759
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 52,
+      "prevRevenue": 723272
      },
      {
       "q": "2026-Q2",
@@ -4026,7 +4030,9 @@
        "h": 1549963
       },
       "sp": "above",
-      "sr": "above"
+      "sr": "above",
+      "prevPayers": 75,
+      "prevRevenue": 1024194
      },
      {
       "q": "2026-Q3",
@@ -4043,7 +4049,9 @@
        "h": 1763759
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 95,
+      "prevRevenue": 1325491
      }
     ],
     "next": {
@@ -4080,7 +4088,9 @@
        "h": 218658
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 3,
+      "prevRevenue": 77714
      },
      {
       "q": "2026-Q1",
@@ -4097,7 +4107,9 @@
        "h": 204918
       },
       "sp": "below",
-      "sr": "below"
+      "sr": "below",
+      "prevPayers": 4,
+      "prevRevenue": 123024
      },
      {
       "q": "2026-Q2",
@@ -4114,7 +4126,9 @@
        "h": 154895
       },
       "sp": "above",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 7,
+      "prevRevenue": 225367
      },
      {
       "q": "2026-Q3",
@@ -4131,7 +4145,9 @@
        "h": 94188
       },
       "sp": "above",
-      "sr": "above"
+      "sr": "above",
+      "prevPayers": 1,
+      "prevRevenue": 41586
      }
     ],
     "next": {
@@ -4168,7 +4184,9 @@
        "h": 333766
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 0,
+      "prevRevenue": 0
      },
      {
       "q": "2026-Q1",
@@ -4185,7 +4203,9 @@
        "h": 407876
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 6,
+      "prevRevenue": 393518
      },
      {
       "q": "2026-Q2",
@@ -4202,7 +4222,9 @@
        "h": 398349
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 5,
+      "prevRevenue": 242605
      },
      {
       "q": "2026-Q3",
@@ -4219,7 +4241,9 @@
        "h": 441057
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 5,
+      "prevRevenue": 218973
      }
     ],
     "next": {
@@ -4256,7 +4280,9 @@
        "h": 568595
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 15,
+      "prevRevenue": 377765
      },
      {
       "q": "2026-Q1",
@@ -4273,7 +4299,9 @@
        "h": 542029
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 12,
+      "prevRevenue": 446523
      },
      {
       "q": "2026-Q2",
@@ -4290,7 +4318,9 @@
        "h": 423097
       },
       "sp": "above",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 16,
+      "prevRevenue": 457324
      },
      {
       "q": "2026-Q3",
@@ -4307,7 +4337,9 @@
        "h": 364598
       },
       "sp": "in",
-      "sr": "above"
+      "sr": "above",
+      "prevPayers": 9,
+      "prevRevenue": 194940
      }
     ],
     "next": {
@@ -4344,7 +4376,9 @@
        "h": 412306
       },
       "sp": "below",
-      "sr": "below"
+      "sr": "below",
+      "prevPayers": 17,
+      "prevRevenue": 184946
      },
      {
       "q": "2026-Q1",
@@ -4361,7 +4395,9 @@
        "h": 390234
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 52,
+      "prevRevenue": 543176
      },
      {
       "q": "2026-Q2",
@@ -4378,7 +4414,9 @@
        "h": 176653
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 22,
+      "prevRevenue": 188559
      },
      {
       "q": "2026-Q3",
@@ -4395,7 +4433,9 @@
        "h": 129846
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 16,
+      "prevRevenue": 99780
      }
     ],
     "next": {
@@ -4432,7 +4472,9 @@
        "h": 2636641
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 80,
+      "prevRevenue": 1854677
      },
      {
       "q": "2026-Q1",
@@ -4449,7 +4491,9 @@
        "h": 2586235
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 124,
+      "prevRevenue": 2363136
      },
      {
       "q": "2026-Q2",
@@ -4466,7 +4510,9 @@
        "h": 2460146
       },
       "sp": "above",
-      "sr": "above"
+      "sr": "above",
+      "prevPayers": 123,
+      "prevRevenue": 2174805
      },
      {
       "q": "2026-Q3",
@@ -4483,7 +4529,9 @@
        "h": 2613545
       },
       "sp": "in",
-      "sr": "in"
+      "sr": "in",
+      "prevPayers": 126,
+      "prevRevenue": 1894108
      }
     ],
     "next": {
@@ -4537,5 +4585,9 @@
     }
    ]
   }
- }
+ },
+ "ga4_gaps": [
+  "2025-07",
+  "2025-08"
+ ]
 }

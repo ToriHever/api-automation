@@ -188,6 +188,7 @@ const data = {
   partial: { '2026-09': 'данные за 29 из 30 дней' },   // неполные месяцы: отклонение по ним занижено на долю недостающих дней
   anomaly: { from: '2026-04', to: '2026-09', text: 'Апрель–сентябрь 2026 исключены из расчёта нормы как устойчивое падение органики' },
   series, skipped, engines, segments: SEG, demand_yoy, purchases,
+  ga4_gaps: ['2025-07', '2025-08'],   // месяцы со сбоем сбора GA4: в YoY трафика GA4 не участвуют
 };
 const file = path.join(__dirname, 'data.snapshot.json');
 fs.writeFileSync(file, JSON.stringify(data, null, 1), 'utf8');

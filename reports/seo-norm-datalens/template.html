@@ -138,6 +138,12 @@ tr.fc td { color: var(--g-color-text-secondary); }
       </ul>
     </section>
 
+    <section class="dashboard-widget s9" id="ty-widget" style="display:none">
+      <h2 class="w-title">Органический трафик: год к году и динамика относительно спроса</h2>
+      <p class="w-cap">Среднее в день, месяц к тому же месяцу прошлого года. Месяцы со сбоем сбора GA4 (июль–август 2025) и неполные месяцы в сравнение не входят, они показаны «—». Колонка «Спрос» — медиана год к году по шести продуктовым рядам спроса (L7, DS, L3-4, VDS, Главная, Хостинг). «Относит.» = (1 + YoY трафика) / (1 + YoY спроса) − 1: выше +10 п.п. — SEO сильнее рынка, ниже −10 п.п. — слабее. Прямое сравнение только для Яндекса (Wordstat — Яндекс); органика сайта включает информационный трафик, а спрос собран по продуктовым фразам, поэтому показатель грубый</p>
+      <div class="tbl-wrap"><table id="ty-tbl"></table></div>
+    </section>
+
     <section class="dashboard-widget s9" id="pu-widget" style="display:none">
       <h2 class="w-title">Покупки из organic: кварталы и KPI-диапазоны по группам</h2>
       <p class="w-cap">Новые плательщики из organic и сумма их оплат первого дня. В ячейке: факт и диапазон (80%), построенный на 12 месяцах ДО этого квартала; красным — ниже диапазона, зелёным — выше. KPI на следующий квартал: середина = среднее за 4 квартала (без сезонности), границы — 80% интервал. Плательщик с двумя продуктами попадает в обе группы, поэтому группы в сумме больше строки «Весь сайт»</p>
@@ -145,6 +151,9 @@ tr.fc td { color: var(--g-color-text-secondary); }
       <div class="tbl-wrap"><table id="pu-tbl-p"></table></div>
       <h3 class="w-sub" style="margin-top:14px">Сумма оплат первого дня, тыс. ₽</h3>
       <div class="tbl-wrap"><table id="pu-tbl-r"></table></div>
+      <h3 class="w-sub" style="margin-top:14px">Год к году по кварталам: плательщики и сумма первого дня</h3>
+      <p class="w-cap">Квартал к тому же кварталу прошлого года. Цветом выделено изменение от 25% при 10 и более плательщиках в прошлогоднем квартале; у малых групп разброс случайный, цвет не ставится, а при базе меньше 5 плательщиков процент не считается</p>
+      <div class="tbl-wrap"><table id="pu-tbl-y"></table></div>
       <div id="pu-landing" style="display:none">
         <h3 class="w-sub" style="margin-top:14px">Какой органический трафик связан с покупками: сессии по странице входа (GA4) и все новые плательщики</h3>
         <p class="w-cap">Сессии, начавшиеся на странице данного типа. Последняя колонка — изменение последнего квартала к первому в таблице</p>
@@ -568,7 +577,80 @@ function renderPurchasesLanding() {
   document.getElementById('pu-tbl-l').innerHTML = head + body;
 }
 
-function renderAll() { renderKpis(); renderNorm(); renderDev(); renderEngines(); renderSegments(); renderTable(); renderDemandYoy(); renderPurchases(); renderPurchasesLanding(); }
+// ---- YoY трафика и динамика относительно спроса ----
+const TY_SHORT = { seo_traffic_ga4: 'Органика, GA4', seo_traffic_metrika: 'Органика, Метрика', seo_traffic_ga4_google: 'Google, GA4',
+  seo_traffic_metrika_google: 'Google, Метрика', seo_traffic_metrika_yandex: 'Яндекс, Метрика' };
+const TY_PRODUCTS = ['L7', 'DS', 'L3-4', 'VDS', 'Главная', 'Хостинг'];
+function renderTrafficYoy() {
+  const widget = document.getElementById('ty-widget');
+  const series = (DATA.series || []).filter((s) => s.kind === 'traffic');
+  if (!series.length) { widget.style.display = 'none'; return; }
+  widget.style.display = '';
+  const gaps = new Set(DATA.ga4_gaps || []);
+  const daysOf = (m) => new Date(+m.slice(0, 4), +m.slice(5, 7), 0).getDate();
+  // месяц пригоден: есть факт, не прогноз, не сбой (для GA4 — список сбоев; текущий неполный месяц — для всех)
+  const val = (s, m) => {
+    const r = s.rows.find((x) => x.m === m);
+    if (!r || r.actual == null || r.forecast) return null;
+    const ga4 = s.key.indexOf('seo_traffic_ga4') === 0;
+    if (gaps.has(m) && (ga4 || m >= '2026-01')) return null;
+    let days = daysOf(m);
+    const pm = DATA.partial && DATA.partial[m];
+    if (pm) { const k = /за (\d+) из/.exec(pm); if (k) days = +k[1]; else return null; }
+    return r.actual / days;
+  };
+  const prevM = (m) => (+m.slice(0, 4) - 1) + m.slice(4);
+  const yoy = (s, m) => { const a = val(s, m), b = val(s, prevM(m)); return a == null || b == null ? null : a / b - 1; };
+  const lastActual = series[0].rows.filter((r) => r.actual != null && !r.forecast).map((r) => r.m).sort().slice(-1)[0];
+  const months = series[0].rows.map((r) => r.m).filter((m) => m <= lastActual && m >= '2025-10').sort().reverse();
+  const demandBy = {};
+  for (const r of DATA.demand_yoy || []) if (TY_PRODUCTS.indexOf(r.p) >= 0 && r.yoy != null) (demandBy[r.m] = demandBy[r.m] || []).push(r.yoy);
+  const demandMed = (m) => { const a = demandBy[m]; return a && a.length === TY_PRODUCTS.length ? median(a) / 100 : null; };
+  const rel = (t, d) => (t == null || d == null ? null : (1 + t) / (1 + d) - 1);
+  const find = (k) => series.find((s) => s.key === k);
+  const cell = (v, thr) => (v == null ? '<td class="num">—</td>' : `<td class="num"><span class="${v < -thr ? 'neg-t' : v > thr ? 'pos-t' : ''}" style="${Math.abs(v) >= thr ? 'font-weight:600' : ''}">${fmtSigned(v * 100, 0)}%</span></td>`);
+  const head = '<tr><th>Месяц</th>' + series.map((s) => `<th class="num">${esc(TY_SHORT[s.key] || s.label)}</th>`).join('') + '<th class="num">Спрос</th><th class="num">Относит. (Метрика)</th><th class="num">Относит. (Яндекс)</th></tr>';
+  const body = months.map((m) => {
+    const d = demandMed(m);
+    const rm = rel(find('seo_traffic_metrika') ? yoy(find('seo_traffic_metrika'), m) : null, d);
+    const ry = rel(find('seo_traffic_metrika_yandex') ? yoy(find('seo_traffic_metrika_yandex'), m) : null, d);
+    return `<tr><td>${mLabel(m)}</td>` + series.map((s) => cell(yoy(s, m), 0.1)).join('') + (d == null ? '<td class="num">—</td>' : `<td class="num">${fmtSigned(d * 100, 0)}%</td>`) + cell(rm, 0.1) + cell(ry, 0.1) + '</tr>';
+  }).join('');
+  document.getElementById('ty-tbl').innerHTML = head + body;
+}
+
+// ---- YoY покупок по кварталам ----
+function renderPurchasesYoy() {
+  const P = DATA.purchases, el = document.getElementById('pu-tbl-y');
+  if (!P || !P.groups || !P.groups.length || !el) return;
+  const qs = P.groups[0].quarters.map((c) => c.q);
+  const head = '<tr><th>Группа</th>' + qs.map((q) => `<th class="num">${QL(q)}</th>`).join('') + '</tr>';
+  const gray = (t) => `<span style="color:var(--g-color-text-secondary)">${t}</span>`;
+  // базу менее 5 плательщиков в прошлогоднем квартале процентом не показываем: +1400% при 1 → 15 только путает
+  const one = (now, prev, unit, small) => {
+    if (prev == null || prev === 0) return gray('нет базы');
+    const abs = `${fmtNum(now)} / ${fmtNum(prev)}${unit ? ' ' + unit : ''}`;
+    if (small) return gray(`${abs} (малая база)`);
+    return `${fmtSigned((now / prev - 1) * 100, 0)}% ${gray('(' + abs + ')')}`;
+  };
+  const colored = (now, prev, unit, small, big) => {
+    const html = one(now, prev, unit, small);
+    if (prev == null || prev === 0 || small || !big) return html;
+    const ch = (now / prev - 1) * 100, cls = ch <= -25 ? 'neg-t' : ch >= 25 ? 'pos-t' : '';
+    return cls ? `<span class="${cls}" style="font-weight:600">${html}</span>` : html;
+  };
+  const body = P.groups.map((g) => {
+    const sep = g.g === 'Весь сайт' ? 'border-top:2px solid var(--g-color-line-generic-solid)' : '';
+    const cells = g.quarters.map((c) => {
+      const small = c.prevPayers != null && c.prevPayers < 5, big = c.prevPayers >= 10;
+      return `<td class="num">${colored(c.payers, c.prevPayers, '', small, big)}<br>${colored(c.revenue / 1000, c.prevRevenue == null ? null : c.prevRevenue / 1000, 'тыс. ₽', small, big)}</td>`;
+    }).join('');
+    return `<tr style="${sep}"><td><b>${esc(g.g)}</b><br>${gray('плательщики / сумма')}</td>${cells}</tr>`;
+  }).join('');
+  el.innerHTML = head + body;
+}
+
+function renderAll() { renderKpis(); renderNorm(); renderDev(); renderEngines(); renderSegments(); renderTable(); renderDemandYoy(); renderPurchases(); renderPurchasesYoy(); renderPurchasesLanding(); renderTrafficYoy(); }
 renderHead();
 renderAll();
 document.getElementById('series-seg').addEventListener('click', (e) => {
