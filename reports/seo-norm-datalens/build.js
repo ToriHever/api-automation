@@ -30,6 +30,7 @@ if (!data.purchases && data.purchases_monthly && data.purchases_monthly.length) 
       data.traffic_landing_monthly.map((r) => ({ month: r.m, grp: r.grp, sessions: +r.sessions })),
       (data.purchases_overall || []).map((r) => ({ month: r.m, payersOrganic: +r.payers_organic })), gap);
   }
+  data.ga4_gaps = data.ga4_incomplete_months || data.ga4_gaps || [];   // нужен отчёту для YoY трафика
   delete data.purchases_monthly; delete data.purchases_overall; delete data.traffic_landing_monthly; delete data.ga4_incomplete_months;
 }
 

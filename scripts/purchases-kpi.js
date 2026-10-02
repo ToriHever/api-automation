@@ -261,10 +261,15 @@ function toReport(an, groups = GROUPS) {
             const r = an.groups[g];
             return {
                 g, reliability: r.reliability, signal: r.signal,
-                quarters: r.checks.filter(c => c.rangePayers).slice(-4).map(c => ({
-                    q: c.quarter, payers: c.payers, revenue: r0(c.revenue), pr: rg(c.rangePayers), rr: rg(c.rangeRevenue),
-                    sp: c.statusPayers, sr: c.statusRevenue
-                })),
+                quarters: r.checks.filter(c => c.rangePayers).slice(-4).map(c => {
+                    const [y, n] = c.quarter.split('-Q');
+                    const prev = r.complete.find(x => x.quarter === `${Number(y) - 1}-Q${n}`);
+                    return {
+                        q: c.quarter, payers: c.payers, revenue: r0(c.revenue), pr: rg(c.rangePayers), rr: rg(c.rangeRevenue),
+                        sp: c.statusPayers, sr: c.statusRevenue,
+                        prevPayers: prev ? prev.payers : null, prevRevenue: prev ? r0(prev.revenue) : null   // тот же квартал год назад (YoY)
+                    };
+                }),
                 next: { q: r.next.quarter, payers: rg(r.next.payers), revenue: rg(r.next.revenue) }
             };
         })
