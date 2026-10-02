@@ -73,6 +73,7 @@ function analyze(visits, { organicOnly = false, windowDays = 30, lastDate = null
     }
     const end = lastDate ?? visits.reduce((m, v) => Math.max(m, v.t), 0);
     const cohort = new Map();      // тип -> { n, reg, pay }
+    const otherUrls = new Map();   // что скрывается в «Прочее» среди новых посетителей: страница входа -> число
     const paths = { registration: [], purchase: [] };
     for (const list of byClient.values()) {
         list.sort((a, b) => a.t - b.t);
@@ -84,6 +85,7 @@ function analyze(visits, { organicOnly = false, windowDays = 30, lastDate = null
             if (list.some(v => v.goals.has(GOAL.registration) && v.t <= first.t + windowDays * DAY)) c.reg++;
             if (list.some(v => v.goals.has(GOAL.purchase) && v.t <= first.t + windowDays * DAY)) c.pay++;
             cohort.set(firstType, c);
+            if (firstType === 'Прочее') { const k = (() => { try { const u = new URL(first.url); return u.hostname + (u.pathname.toLowerCase().replace(/\/$/, '') || '/'); } catch (e) { return first.url.slice(0, 60); } })(); otherUrls.set(k, (otherUrls.get(k) || 0) + 1); }
         }
         if (organicOnly && first.source !== 'organic') continue;
         for (const [key, goal] of [['registration', GOAL.registration], ['purchase', GOAL.purchase]]) {
@@ -104,7 +106,7 @@ function analyze(visits, { organicOnly = false, windowDays = 30, lastDate = null
         hadInfo: list.filter(p => p.hadInfo).length,
         firstByType: [...list.reduce((m, p) => m.set(p.firstType, (m.get(p.firstType) || 0) + 1), new Map())].sort((a, b) => b[1] - a[1])
     });
-    return { cohort: [...cohort.entries()].sort((a, b) => b[1].n - a[1].n), registration: summarize(paths.registration), purchase: summarize(paths.purchase),
+    return { cohort: [...cohort.entries()].sort((a, b) => b[1].n - a[1].n), otherTop: [...otherUrls.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15), registration: summarize(paths.registration), purchase: summarize(paths.purchase),
         topFirstUrls: key => [...paths[key].reduce((m, p) => { const k = (() => { try { return new URL(p.firstUrl).pathname.toLowerCase().replace(/\/$/, '') || '/'; } catch (e) { return p.firstUrl; } })(); return m.set(k, (m.get(k) || 0) + 1); }, new Map())].sort((a, b) => b[1] - a[1]).slice(0, 15) };
 }
 
@@ -155,6 +157,7 @@ function print(res, organicOnly) {
     console.log(`\nКогорты новых посетителей (первый визит 2026 с окном 30 дней${organicOnly ? ', первый визит из органики' : ''}):`);
     console.log('  тип входной страницы        посетителей  зарегистрировались  оплатили');
     for (const [t, c] of res.cohort) console.log(`  ${t.padEnd(26)} ${String(c.n).padStart(9)}  ${String(c.reg).padStart(8)} (${pct(c.reg, c.n).padStart(5)})  ${String(c.pay).padStart(5)} (${pct(c.pay, c.n)})`);
+    if (res.otherTop && res.otherTop.length) console.log('\n  Что в «Прочее» (топ входных страниц новых посетителей): ' + res.otherTop.map(([u, n]) => `${u} ${n}`).join('; '));
     for (const [key, title] of [['registration', 'Регистрация'], ['purchase', 'Оплата']]) {
         const s = res[key];
         console.log(`\n${title}: ${s.n} посетителей достигли цели${organicOnly ? ' (первый визит из органики)' : ''}`);
