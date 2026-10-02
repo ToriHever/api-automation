@@ -12,3 +12,6 @@ services/domains-meta/cookies*.json
 services/notes/.offset
 scripts/output/
 services/lemmatizer/venv/
+
+# локальные выгрузки (визиты Метрики)
+tmp/
