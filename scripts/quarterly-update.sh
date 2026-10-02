@@ -4,16 +4,29 @@
 #   bash scripts/quarterly-update.sh wordstat  # шаг 2 отдельно: спрос (повторять раз в час, пока не скажет «собирать нечего»)
 #   bash scripts/quarterly-update.sh report    # шаги 5–6: вью и сборка HTML
 # Подробности и что делать руками: services/reports/README.md, раздел «Ежеквартальное обновление».
-set -euo pipefail
+set -eo pipefail
 cd "$(dirname "$0")/.."
 unset YANDEX_METRIKA_COUNTER_ID          # иначе берётся счётчик по умолчанию, а не RU (см. README, «Проблемы» п. 8)
+
+# psql берёт подключение из тех же PG* переменных, что и Node-скрипты (.env: PGHOST, PGUSER, PGPASSWORD, PGDATABASE, PGPORT)
+load_pg() {
+  [ -f .env ] || return 0
+  local k v
+  while IFS='=' read -r k v; do
+    case "$k" in PGHOST|PGUSER|PGPASSWORD|PGDATABASE|PGPORT)
+      v="${v%\"}"; v="${v#\"}"; v="${v%\'}"; v="${v#\'}"
+      export "$k=$v" ;;
+    esac
+  done < <(grep -E '^PG(HOST|USER|PASSWORD|DATABASE|PORT)=' .env)
+}
+load_pg
 step() { printf '\n\033[1m== %s ==\033[0m\n' "$*"; }
 
 case "${1:-}" in
   data)
     step "1. Трафик GA4 + Метрика (36 мес.) и органика по поисковикам"
-    node scripts/traffic-history-36m.js
-    node scripts/traffic-organic-engines.js
+    node scripts/traffic-history-36m.js --site ru      # только ru: норма по en не строится, а Метрика en отдаёт ошибку 400 на старых месяцах
+    node scripts/traffic-organic-engines.js --site ru
     step "1b. Трафик по страницам входа (GA4; по желанию Метрика: убрать --source ga4)"
     node scripts/traffic-organic-landing.js --source ga4 --from 2025-07
     step "1c. Состав Google-трафика по сегментам GSC"
@@ -34,10 +47,10 @@ case "${1:-}" in
     ;;
   report)
     step "5. Вью"
-    psql "$DATABASE_URL" -f services/reports/report_views.sql
+    psql -v ON_ERROR_STOP=1 -f services/reports/report_views.sql
     step "6. HTML-отчёт"
     cd reports/seo-norm-datalens
-    psql "$DATABASE_URL" -At -f queries.sql -o data.json
+    psql -v ON_ERROR_STOP=1 -At -f queries.sql -o data.json
     node build.js --data data.json
     python3 ../gsc-datalens/tools/validate_page.py --strict dist/seo-norm-report.html
     echo "Готово: reports/seo-norm-datalens/dist/seo-norm-report.html"

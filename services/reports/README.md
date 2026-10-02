@@ -48,7 +48,7 @@ node scripts/seasonality-index.js --series seo_traffic_metrika --min-months 6
 node scripts/seasonality-index.js --series engines --min-months 6
 node scripts/seo-traffic-norm.js            # затем при желании --dry-run для проверки
 node scripts/gsc-segments-monthly.js
-psql "$DATABASE_URL" -f services/reports/report_views.sql
+psql -f services/reports/report_views.sql
 ```
 
 ## Отчёт для DataLens (HTML-страница)
@@ -58,7 +58,7 @@ psql "$DATABASE_URL" -f services/reports/report_views.sql
 
 ```bash
 cd reports/seo-norm-datalens
-psql "$DATABASE_URL" -At -f queries.sql -o data.json    # реальные данные из БД
+psql -At -f queries.sql -o data.json    # реальные данные из БД
 node build.js --data data.json                          # -> dist/seo-norm-report.html
 python ../gsc-datalens/tools/validate_page.py --strict dist/seo-norm-report.html
 ```
@@ -236,6 +236,9 @@ bash scripts/quarterly-update.sh wordstat   # спрос; повторять р�
 bash scripts/quarterly-update.sh data       # повторить ПОСЛЕ сбора Wordstat, чтобы индекс и норма спроса увидели свежие данные
 bash scripts/quarterly-update.sh report     # вью + HTML в reports/seo-norm-datalens/dist/seo-norm-report.html
 ```
+Скрипт сам берёт подключение к БД для `psql` из `.env` (PGHOST, PGUSER, PGPASSWORD, PGDATABASE); переменная `DATABASE_URL` не нужна. Для ручного запуска `psql` в других местах README: `set -a; . ./.env; set +a` или те же PG*-переменные.
+Трафик собирается только для ru (`--site ru`): норма по en не строится, а Метрика en отдаёт ошибку 400 (запрос слишком сложный) на старых месяцах.
+
 Руками остаётся:
 - **Тексты отчёта** (выводы, «Проблемы», «Что осталось открытым») написаны под срез 2026-09-30 и не обновляются сами: после
   обновления данных их надо перечитать и поправить в `reports/seo-norm-datalens/template.html`.

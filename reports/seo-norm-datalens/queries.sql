@@ -4,7 +4,7 @@
 -- Перед выгрузкой: node scripts/seo-traffic-norm.js (и его зависимости, см. COMMANDS.md).
 --
 -- Запуск (пример):
---   psql "$DATABASE_URL" -At -f queries.sql -o data.json
+--   psql -At -f queries.sql -o data.json
 --   node build.js --data data.json
 -- Итоговый JSON — один объект; поле anomaly задайте под текущий список reports.seasonality_events
 -- (по умолчанию апрель–сентябрь 2026).

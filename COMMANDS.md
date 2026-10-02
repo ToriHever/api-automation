@@ -141,9 +141,9 @@ node scripts/gsc-segments-monthly.js
 
 ## 🖥 Отчёт «Норма трафика SEO» для DataLens
 ```bash
-psql "$DATABASE_URL" -f services/reports/report_views.sql      # вью reports.v_seo_norm_report / v_seo_norm_latest
+psql -f services/reports/report_views.sql      # вью reports.v_seo_norm_report / v_seo_norm_latest
 cd reports/seo-norm-datalens
-psql "$DATABASE_URL" -At -f queries.sql -o data.json           # данные из БД
+psql -At -f queries.sql -o data.json           # данные из БД
 node build.js --data data.json                                 # -> dist/seo-norm-report.html
 python ../gsc-datalens/tools/validate_page.py --strict dist/seo-norm-report.html
 ```
