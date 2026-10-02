@@ -284,7 +284,36 @@ function buildBlock(rows, overall) {
     return { last: groups.last, groups: list };
 }
 
-module.exports = { buildBlock, GROUPS, OVERALL, overallRows, toReport, parseCsv, parseNum, parseProducts, parseOverall, quarterRange, analyze, quarterOf, addMonths };
+/**
+ * Трафик по типу страницы входа и покупки по полным кварталам (последние 4).
+ * rows: [{ month:'2025-10', grp, sessions }] из reports.v_traffic_landing_group_monthly (GA4, ru),
+ * overall: parseOverall, gapMonths: Set месяцев со сбоем сбора GA4 (такой квартал не берётся).
+ */
+function buildLandingBlock(rows, overall, gapMonths = new Set()) {
+    const PROD = new Set(['L7', 'L3-4', 'DS', 'VDS', 'Хостинг']);
+    const q = {};
+    for (const r of rows) {
+        const k = quarterOf(r.month);
+        q[k] = q[k] || { months: new Set(), home: 0, prod: 0, info: 0, other: 0, payers: 0, payerMonths: 0 };
+        q[k].months.add(r.month);
+        const v = Number(r.sessions);
+        if (r.grp === 'Главная') q[k].home += v;
+        else if (PROD.has(r.grp)) q[k].prod += v;
+        else if (r.grp === 'Информационные') q[k].info += v;
+        else q[k].other += v;
+    }
+    for (const o of overall) {
+        const k = quarterOf(o.month);
+        if (q[k] && o.payersOrganic !== null) { q[k].payers += o.payersOrganic; q[k].payerMonths++; }
+    }
+    const quarters = Object.entries(q)
+        .filter(([, v]) => v.months.size === 3 && v.payerMonths === 3 && ![...v.months].some(m => gapMonths.has(m)))
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([k, v]) => ({ q: k, home: v.home, prod: v.prod, info: v.info, other: v.other, payers: v.payers }));
+    return { quarters: quarters.slice(-4) };
+}
+
+module.exports = { buildLandingBlock, buildBlock, GROUPS, OVERALL, overallRows, toReport, parseCsv, parseNum, parseProducts, parseOverall, quarterRange, analyze, quarterOf, addMonths };
 
 if (require.main === module) {
     (async () => {

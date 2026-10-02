@@ -86,5 +86,15 @@ SELECT json_build_object(
         SELECT json_agg(o ORDER BY o.m)
         FROM (SELECT to_char(month, 'YYYY-MM') AS m, new_payers_organic AS payers_organic, revenue_organic_rub AS revenue, invoices_organic AS invoices
               FROM reports.purchases_overall_monthly WHERE revenue_organic_rub IS NOT NULL) o
+    ),
+
+    -- трафик по странице входа (GA4, ru) по группам и месяцам и месяцы GA4 со сбоем сбора
+    'traffic_landing_monthly', (
+        SELECT json_agg(t ORDER BY t.m, t.grp)
+        FROM (SELECT to_char(month, 'YYYY-MM') AS m, grp, SUM(sessions) AS sessions
+              FROM reports.v_traffic_landing_group_monthly WHERE source = 'ga4' AND site = 'ru' GROUP BY month, grp) t
+    ),
+    'ga4_incomplete_months', (
+        SELECT COALESCE(json_agg(to_char(month, 'YYYY-MM')), '[]'::json) FROM reports.v_ga4_months_complete WHERE NOT complete
     )
 );

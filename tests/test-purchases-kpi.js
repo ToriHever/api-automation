@@ -70,3 +70,16 @@ test('реальные данные: KPI на 2026-Q4 для L7 и режимн�
     assert.strictEqual(an.groups['L3-4'].reliability, 'regime');
     assert.strictEqual(an.groups['DS'].reliability, 'low_volume');
 });
+
+test('трафик по типу страницы: квартал со сбоем GA4 не берётся, плательщики складываются', () => {
+    const { buildLandingBlock } = require('../scripts/purchases-kpi.js');
+    const rows = [];
+    for (const m of ['2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12']) {
+        rows.push({ month: m, grp: 'Информационные', sessions: 100 }, { month: m, grp: 'Главная', sessions: 50 },
+                  { month: m, grp: 'L7', sessions: 5 }, { month: m, grp: 'Прочее', sessions: 1 });
+    }
+    const overall = ['2025-07', '2025-08', '2025-09', '2025-10', '2025-11', '2025-12'].map(month => ({ month, payersOrganic: 10 }));
+    const b = buildLandingBlock(rows, overall, new Set(['2025-08']));
+    assert.deepStrictEqual(b.quarters.map(q => q.q), ['2025-Q4'], 'III квартал со сбоем в августе исключён');
+    assert.deepStrictEqual(b.quarters[0], { q: '2025-Q4', home: 150, prod: 15, info: 300, other: 3, payers: 30 });
+});
