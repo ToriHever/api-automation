@@ -200,3 +200,21 @@ npm run test:purchases-kpi
 HTML-отчёт `reports/seo-norm-datalens`: блок «Покупки из organic» (две таблицы: плательщики и сумма, по кварталам с диапазоном и KPI на
 следующий квартал, строка «Весь сайт» и текстовые выводы). Из БД: `queries.sql` отдаёт `purchases_monthly` и `purchases_overall`,
 `build.js` считает диапазоны тем же кодом, что `scripts/purchases-kpi.js`. Перед выгрузкой выполнить `purchases-kpi.js --apply`.
+
+## Трафик по страницам входа и связь с покупками
+
+`scripts/traffic-organic-landing.js` собирает по API органические сессии по странице входа (GA4: `landingPage`, Метрика: `startURLPath`),
+по полным месяцам, поисковикам Google / Yandex / Other → `reports.traffic_organic_landing` (схема `traffic_landing_schema.sql`).
+Представления: `v_landing_page_group` (страницы групп из Топвизора), `v_traffic_landing_group_monthly` (сессии по группам L7, L3-4, DS,
+VDS, Хостинг, Главная, Информационные, Прочее), `v_purchases_vs_traffic_quarterly` (квартал × группа: сессии на страницы группы,
+новые плательщики, конверсия на 1000 сессий). «Информационные» (блог, terms, tutorials, technologies, case-studies, osi-model) в
+конверсию продукта не входят: покупатель мог начать с блога.
+
+```bash
+node scripts/traffic-organic-landing.js --dry-run                 # проверка без записи
+node scripts/traffic-organic-landing.js --source ga4              # основной источник
+node scripts/traffic-organic-landing.js                           # GA4 и Метрика
+npm run test:traffic-landing
+```
+Страницы с группой определяются по `target` фраз в Топвизоре (проект ddos-guard.ru). Страница с трафиком, но без target, попадает в
+«Прочее» (если не информационный раздел): проверить «Прочее» после первой загрузки.
