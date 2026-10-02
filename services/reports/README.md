@@ -223,3 +223,21 @@ npm run test:traffic-landing
 сбора (`v_ga4_months_complete`, например июль–август 2025). `payers_per_1000` — не конверсия страницы: покупатель приходит не только
 на страницу продукта (на главную приходится ≈8–9 тыс. сессий в квартал против ≈1,5 тыс. на все продуктовые страницы), а с главной,
 из блога и т.д.; показатель годится только для динамики.
+
+## Ежеквартальное обновление (раз в квартал, после закрытия последнего месяца)
+
+```bash
+cd /opt/api-automation
+git pull origin claude/trusting-archimedes-qsz9xl       # если ветка уже влита в main — просто git pull
+# 0. Руками: обновить покупки (CSV с теми же колонками) в services/reports/data/
+#    organic_monthly_products.csv и organic_monthly_overall.csv (CSV не хранятся в git)
+bash scripts/quarterly-update.sh data       # трафик, страницы входа, GSC, индексы, норма, покупки и KPI
+bash scripts/quarterly-update.sh wordstat   # спрос; повторять раз в час, пока не скажет, что собирать нечего
+bash scripts/quarterly-update.sh data       # повторить ПОСЛЕ сбора Wordstat, чтобы индекс и норма спроса увидели свежие данные
+bash scripts/quarterly-update.sh report     # вью + HTML в reports/seo-norm-datalens/dist/seo-norm-report.html
+```
+Руками остаётся:
+- **Тексты отчёта** (выводы, «Проблемы», «Что осталось открытым») написаны под срез 2026-09-30 и не обновляются сами: после
+  обновления данных их надо перечитать и поправить в `reports/seo-norm-datalens/template.html`.
+- **Аномальные месяцы** (`reports.seasonality_events`): раз в год пересматривать, что считается нормой, а что аномалией.
+- Спрос Wordstat за последний месяц выходит с задержкой; сентябрь появляется в октябре.
