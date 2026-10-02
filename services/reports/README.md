@@ -228,7 +228,7 @@ npm run test:traffic-landing
 
 ```bash
 cd /opt/api-automation
-git pull origin claude/trusting-archimedes-qsz9xl       # если ветка уже влита в main — просто git pull
+git pull                                                # основная работа уже влита в main
 # 0. Руками: обновить покупки (CSV с теми же колонками) в services/reports/data/
 #    organic_monthly_products.csv и organic_monthly_overall.csv (CSV не хранятся в git)
 bash scripts/quarterly-update.sh data       # трафик, страницы входа, GSC, индексы, норма, покупки и KPI
