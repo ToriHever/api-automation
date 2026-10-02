@@ -27,6 +27,7 @@
     "test:connections": "node tests/test-connections.js",
     "test:seo-norm": "node tests/test-seo-norm.js",
     "test:demand-pool": "node tests/test-demand-pool.js",
+    "test:purchases-kpi": "node tests/test-purchases-kpi.js",
     "test:notifications": "node tests/test-notifications.js",
     "health-check": "node scripts/health-check.js",
     "daily-report": "node scripts/send-daily-report.js",
