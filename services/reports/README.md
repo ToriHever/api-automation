@@ -181,7 +181,7 @@ python ../gsc-datalens/tools/validate_page.py --strict dist/seo-norm-report.html
 
 ## Покупки из organic и KPI-диапазоны по продуктовым группам
 
-Данные: `services/reports/data/organic_monthly_products.csv` (новые плательщики и оплаты первого дня по группам L7, L3-4, DS, VDS,
+Данные (CSV не хранятся в git, файлы кладутся на сервер вручную или указываются через `--products`/`--overall`): `services/reports/data/organic_monthly_products.csv` (новые плательщики и оплаты первого дня по группам L7, L3-4, DS, VDS,
 Хостинг) и `organic_monthly_overall.csv` (итог по сайту). Правило organic задаёт выгрузка. Схема: `purchases_schema.sql`.
 
 ```bash

@@ -16,6 +16,7 @@
 // Запуск:
 //   node scripts/purchases-kpi.js              # показать отчёт по CSV (БД не нужна)
 //   node scripts/purchases-kpi.js --apply      # записать данные и KPI в reports.purchases_*
+//   --products <csv> --overall <csv>           # пути к файлам, если они не в services/reports/data/ (CSV не хранятся в git)
 
 const fs = require('fs');
 const path = require('path');
@@ -254,8 +255,16 @@ module.exports = { parseCsv, parseNum, parseProducts, parseOverall, quarterRange
 
 if (require.main === module) {
     (async () => {
-        const rows = parseProducts(fs.readFileSync(path.join(DATA_DIR, 'organic_monthly_products.csv'), 'utf8'));
-        const overall = parseOverall(fs.readFileSync(path.join(DATA_DIR, 'organic_monthly_overall.csv'), 'utf8'));
+        const argOf = (n, def) => { const i = process.argv.indexOf(`--${n}`); return i > -1 ? process.argv[i + 1] : def; };
+        const read = (file, what) => {
+            if (!fs.existsSync(file)) {
+                throw new Error(`Нет файла ${file} (${what}). CSV не хранятся в git (*.csv в .gitignore): положите файл на сервер ` +
+                    `или укажите путь: --products <файл> --overall <файл>`);
+            }
+            return fs.readFileSync(file, 'utf8');
+        };
+        const rows = parseProducts(read(argOf('products', path.join(DATA_DIR, 'organic_monthly_products.csv')), 'по продуктовым группам'));
+        const overall = parseOverall(read(argOf('overall', path.join(DATA_DIR, 'organic_monthly_overall.csv')), 'итог по сайту'));
         const an = analyze(rows);
         printReport(an);
         if (process.argv.includes('--apply')) await apply(rows, overall, an);

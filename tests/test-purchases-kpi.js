@@ -7,6 +7,8 @@ const path = require('path');
 const { parseCsv, parseNum, parseProducts, parseOverall, quarterRange, analyze, addMonths } = require('../scripts/purchases-kpi.js');
 
 const DATA = path.join(__dirname, '../services/reports/data');
+// CSV с покупками не хранятся в git: тесты на реальных данных пропускаются, если файлов нет
+const HAS_DATA = fs.existsSync(path.join(DATA, 'organic_monthly_products.csv')) && fs.existsSync(path.join(DATA, 'organic_monthly_overall.csv'));
 
 test('десятичная запятая и пустые значения', () => {
     assert.strictEqual(parseNum('1234,56'), 1234.56);
@@ -19,7 +21,7 @@ test('CSV: числа с запятой в кавычках не разрыва�
     assert.deepStrictEqual(parseCsv('a,b\n1,"2,50"\n'), [['a', 'b'], ['1', '2,50']]);
 });
 
-test('реальная выгрузка: 5 групп × 30 месяцев, итог по сайту', () => {
+test('реальная выгрузка: 5 групп × 30 месяцев, итог по сайту', { skip: !HAS_DATA }, () => {
     const rows = parseProducts(fs.readFileSync(path.join(DATA, 'organic_monthly_products.csv'), 'utf8'));
     assert.strictEqual(rows.length, 150);
     const r = rows.find(x => x.month === '2026-02' && x.product === 'L7');
@@ -59,7 +61,7 @@ test('сигнал: два квартала подряд ниже границы
     assert.strictEqual(an.groups['L7'].signal, 'два квартала подряд ниже границы');
 });
 
-test('реальные данные: KPI на 2026-Q4 для L7 и режимная пометка L3-4', () => {
+test('реальные данные: KPI на 2026-Q4 для L7 и режимная пометка L3-4', { skip: !HAS_DATA }, () => {
     const rows = parseProducts(fs.readFileSync(path.join(DATA, 'organic_monthly_products.csv'), 'utf8'));
     const an = analyze(rows);
     assert.strictEqual(an.last, '2026-09');
