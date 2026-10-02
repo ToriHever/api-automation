@@ -244,3 +244,20 @@ bash scripts/quarterly-update.sh report     # вью + HTML в reports/seo-norm-
   обновления данных их надо перечитать и поправить в `reports/seo-norm-datalens/template.html`.
 - **Аномальные месяцы** (`reports.seasonality_events`): раз в год пересматривать, что считается нормой, а что аномалией.
 - Спрос Wordstat за последний месяц выходит с задержкой; сентябрь появляется в октябре.
+
+## Клиентский путь из GA4 (по customer_id)
+
+`customer_id` в событиях GA4 совпадает с id клиента в админке (подтверждено). `scripts/ga4-customer-journey.js` выгружает по API
+события регистрации, корзины, оформления, способа оплаты и оплаты по клиенту с каналом ПЕРВОГО визита пользователя и оплаты с купоном,
+валютой, суммой и способом оплаты → `reports.ga4_customer_events`, `reports.ga4_customer_purchases` (схема `ga4_customer_schema.sql`).
+Вью: `v_ga4_customer_journey` (клиент: канал, регистрация, первая оплата, срок, число оплат, тест L3-4 по купону `L3_PAID_TEST_99`),
+`v_ga4_registration_funnel_monthly` (регистрации месяца по каналу и доля оплативших в тот же день, за 30 и 90 дней).
+
+```bash
+node scripts/ga4-customer-journey.js --dry-run     # проверка без записи
+node scripts/ga4-customer-journey.js --from 2026-01
+npm run test:ga4-journey
+```
+Ограничения: нет цепочки страниц (нужен BigQuery); оплата идёт с сервера (хост «(not set)»), канал берётся по пользователю, не по сессии;
+события шагов мастера (L7 Шаг N и др.) в мае и июле 2026 менялись — для воронки использовать registration → begin_checkout →
+add_payment_info → purchase; `customer_id` внутренний, в отчёты наружу не выводить.
