@@ -30,6 +30,7 @@
     "test:purchases-kpi": "node tests/test-purchases-kpi.js",
     "test:traffic-landing": "node tests/test-traffic-landing.js",
     "test:ga4-journey": "node tests/test-ga4-journey.js",
+    "test:metrika-paths": "node tests/test-metrika-paths.js",
     "test:notifications": "node tests/test-notifications.js",
     "health-check": "node scripts/health-check.js",
     "daily-report": "node scripts/send-daily-report.js",
