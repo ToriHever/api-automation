@@ -39,7 +39,7 @@ async function main() {
         return (await axios.post(`${GA4_URL}/${propertyId}:runReport`, {
             dateRanges: [{ startDate: from, endDate: to }], dimensions: [{ name: dimension }],
             metrics: [{ name: 'eventCount' }, { name: 'totalUsers' }], dimensionFilter: filter,
-            orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }], limit: 1000
+            orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }], limit: 100000
         }, { headers, timeout: 60000 })).data.rows || [];
     }, `ga4 ${dimension}`);
 
