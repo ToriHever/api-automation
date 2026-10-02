@@ -74,5 +74,17 @@ SELECT json_build_object(
             FROM reports.v_gsc_segment_share
             GROUP BY month
         ) g
+    ),
+
+    -- покупки из organic: помесячные строки (диапазоны считает build.js тем же кодом, что scripts/purchases-kpi.js)
+    'purchases_monthly', (
+        SELECT json_agg(p ORDER BY p.m, p.product)
+        FROM (SELECT to_char(month, 'YYYY-MM') AS m, product, new_payers AS payers, revenue_rub AS revenue, invoices
+              FROM reports.purchases_monthly) p
+    ),
+    'purchases_overall', (
+        SELECT json_agg(o ORDER BY o.m)
+        FROM (SELECT to_char(month, 'YYYY-MM') AS m, new_payers_organic AS payers_organic, revenue_organic_rub AS revenue, invoices_organic AS invoices
+              FROM reports.purchases_overall_monthly WHERE revenue_organic_rub IS NOT NULL) o
     )
 );

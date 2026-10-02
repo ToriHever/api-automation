@@ -138,11 +138,11 @@ function quarterRange(months12, kind) {
  * rows: parseProducts. Возвращает по группам: помесячные ряды, квартальные факты и проверку по диапазону «до»,
  * KPI на следующий квартал.
  */
-function analyze(rows, { lastMonth } = {}) {
+function analyze(rows, { lastMonth, groups = GROUPS } = {}) {
     const last = lastMonth || rows.reduce((m, r) => (r.month > m ? r.month : m), '0000-00');
     const first = rows.reduce((m, r) => (r.month < m ? r.month : m), '9999-99');
     const result = {};
-    for (const g of GROUPS) {
+    for (const g of groups) {
         const payers = {}, revenue = {};
         for (let k = first; k <= last; k = addMonths(k, 1)) { payers[k] = 0; revenue[k] = 0; }
         for (const r of rows.filter(x => x.product === g)) { payers[r.month] = r.payers; revenue[r.month] = r.revenue; }
@@ -251,7 +251,40 @@ async function apply(rows, overall, an) {
     }
 }
 
-module.exports = { parseCsv, parseNum, parseProducts, parseOverall, quarterRange, analyze, quarterOf, addMonths };
+/** Данные для HTML-отчёта: последние 4 проверенных квартала и KPI следующего по каждой группе. */
+function toReport(an, groups = GROUPS) {
+    const r0 = x => Math.round(x);
+    const rg = x => ({ l: r0(x.low), m: r0(x.mid), h: r0(x.high) });
+    return {
+        last: an.last,
+        groups: groups.map(g => {
+            const r = an.groups[g];
+            return {
+                g, reliability: r.reliability, signal: r.signal,
+                quarters: r.checks.filter(c => c.rangePayers).slice(-4).map(c => ({
+                    q: c.quarter, payers: c.payers, revenue: r0(c.revenue), pr: rg(c.rangePayers), rr: rg(c.rangeRevenue),
+                    sp: c.statusPayers, sr: c.statusRevenue
+                })),
+                next: { q: r.next.quarter, payers: rg(r.next.payers), revenue: rg(r.next.revenue) }
+            };
+        })
+    };
+}
+
+/** Строки общего итога как псевдо-группа «Весь сайт» (для того же расчёта). */
+const OVERALL = 'Весь сайт';
+const overallRows = overall => overall.map(o => ({ month: o.month, product: OVERALL, payers: o.payersOrganic, revenue: o.revenue, invoices: o.invoices }));
+
+/** Блок для HTML-отчёта: 5 групп + «Весь сайт». rows — parseProducts, overall — parseOverall. */
+function buildBlock(rows, overall) {
+    const groups = analyze(rows);
+    const site = overall.length ? analyze(overallRows(overall), { groups: [OVERALL] }) : null;
+    const list = toReport(groups).groups;
+    if (site) list.push(...toReport(site, [OVERALL]).groups);
+    return { last: groups.last, groups: list };
+}
+
+module.exports = { buildBlock, GROUPS, OVERALL, overallRows, toReport, parseCsv, parseNum, parseProducts, parseOverall, quarterRange, analyze, quarterOf, addMonths };
 
 if (require.main === module) {
     (async () => {

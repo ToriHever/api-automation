@@ -153,12 +153,25 @@ const SEG = [
   ['2026-09', 47.0, 29.0, 4.7, 4.2, 25, 30],
 ].map(([m, brand, informational, product, other, days, days_in_month]) => ({ m, brand, informational, product, other, days, days_in_month }));
 
+// ---- Покупки из organic (scripts/purchases-kpi.js, CSV аналитиков; CSV не хранятся в git — если файлов нет, блок пропускается) ----
+let purchases = null;
+{
+  const purch = require('../../scripts/purchases-kpi.js');
+  const dir = path.join(__dirname, '../../services/reports/data');
+  const fp = path.join(dir, 'organic_monthly_products.csv'), fo = path.join(dir, 'organic_monthly_overall.csv');
+  if (fs.existsSync(fp) && fs.existsSync(fo)) {
+    const rows = purch.parseProducts(fs.readFileSync(fp, 'utf8'));
+    const ov = purch.parseOverall(fs.readFileSync(fo, 'utf8'));
+    purchases = purch.buildBlock(rows, ov);
+  } else console.log('Покупки: CSV нет, блок пропущен');
+}
+
 const data = {
   generated: '2026-10-01', source: 'snapshot', site: 'ru',
   note: 'Срез на 2026-10-01: месячные значения трафика и спроса из результатов запросов к прод-БД, нормы трафика пересчитаны алгоритмом scripts/seo-traffic-norm.js, нормы спроса и сравнение год к году взяты из вывода скриптов на сервере.',
   partial: { '2026-09': 'данные за 29 из 30 дней' },   // неполные месяцы: отклонение по ним занижено на долю недостающих дней
   anomaly: { from: '2026-04', to: '2026-09', text: 'Апрель–сентябрь 2026 исключены из расчёта нормы как устойчивое падение органики' },
-  series, skipped, engines, segments: SEG, demand_yoy,
+  series, skipped, engines, segments: SEG, demand_yoy, purchases,
 };
 const file = path.join(__dirname, 'data.snapshot.json');
 fs.writeFileSync(file, JSON.stringify(data, null, 1), 'utf8');
