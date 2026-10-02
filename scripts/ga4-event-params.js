@@ -29,10 +29,11 @@ async function main() {
     const propertyId = process.env[`GA4_PROPERTY_ID_${siteKey.toUpperCase()}`] || process.env.GA4_PROPERTY_ID;
     if (!propertyId) throw new Error('Не задан GA4_PROPERTY_ID');
     const auth = new GoogleAuthManager();
-    const filter = { andGroup: { expressions: [
-        { filter: { fieldName: 'hostName', stringFilter: { matchType: 'EXACT', value: host } } },
-        { filter: { fieldName: 'eventName', stringFilter: { matchType: 'EXACT', value: event } } }
-    ] } };
+    const evFilter = { filter: { fieldName: 'eventName', stringFilter: { matchType: 'EXACT', value: event } } };
+    // По умолчанию все хосты (ЛК живёт на другом хосте); --host-only — только основной сайт
+    const filter = process.argv.includes('--host-only')
+        ? { andGroup: { expressions: [{ filter: { fieldName: 'hostName', stringFilter: { matchType: 'EXACT', value: host } } }, evFilter] } }
+        : evFilter;
     const run = async (dimension) => withRetry(async () => {
         const headers = await auth.getAuthHeaders();
         return (await axios.post(`${GA4_URL}/${propertyId}:runReport`, {

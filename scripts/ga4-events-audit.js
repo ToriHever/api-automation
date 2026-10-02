@@ -8,13 +8,17 @@
 //
 //   node scripts/ga4-events-audit.js                     # 2026-01-01 .. вчера, сайт ru
 //   node scripts/ga4-events-audit.js --from 2026-01-01 --to 2026-09-30
+//   node scripts/ga4-events-audit.js --host-only    # только ddos-guard.ru (по умолчанию — ВСЕ хосты, в т.ч. личный кабинет)
+//   node scripts/ga4-events-audit.js --top 150      # сколько событий печатать (по умолчанию 80)
+// Регистрация, оплата и шаги мастера подключения L3-4 идут из личного кабинета (другой хост), поэтому по умолчанию
+// фильтра по хосту нет, а ниже печатается разбивка интересных событий по хостам.
 
 require('dotenv').config();
 const axios = require('axios');
 const GoogleAuthManager = require('../core/GoogleAuthManager');
 const { SITES, GA4_URL, arg, withRetry } = require('./traffic-history-36m');
 
-const INTERESTING = /sign|regist|login|lead|purchase|payment|pay|order|trial|form|submit|click|cta|invoice|checkout|cart|generate|begin|start|conf|contact|demo|test/i;
+const INTERESTING = /sign|regist|login|lead|purchase|payment|pay|order|trial|form|submit|click|cta|invoice|checkout|cart|generate|begin|start|conf|contact|demo|test|шаг|wizard|activate|tariff/i;
 
 async function main() {
     const siteKey = arg('site', 'ru');
@@ -24,7 +28,11 @@ async function main() {
     const propertyId = process.env[`GA4_PROPERTY_ID_${siteKey.toUpperCase()}`] || process.env.GA4_PROPERTY_ID;
     if (!propertyId) throw new Error('Не задан GA4_PROPERTY_ID');
     const auth = new GoogleAuthManager();
-    const hostFilter = { filter: { fieldName: 'hostName', stringFilter: { matchType: 'EXACT', value: host } } };
+    const hostOnly = process.argv.includes('--host-only');
+    const top = Number(arg('top', 80));
+    const hostFilter = hostOnly
+        ? { filter: { fieldName: 'hostName', stringFilter: { matchType: 'EXACT', value: host } } }
+        : { filter: { fieldName: 'eventName', stringFilter: { matchType: 'FULL_REGEXP', value: '.+' } } };
     const call = async (path, body) => withRetry(async () => {
         const headers = await auth.getAuthHeaders();
         return (body ? await axios.post(`${GA4_URL}/${propertyId}${path}`, body, { headers, timeout: 60000 })
@@ -41,11 +49,11 @@ async function main() {
         dimensionFilter: hostFilter, orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }], limit: 200
     });
     const events = (ev.rows || []).map(r => ({ name: r.dimensionValues[0].value, count: Number(r.metricValues[0].value), users: Number(r.metricValues[1].value) }));
-    console.log('=== События (топ-60 по числу) ===');
-    for (const e of events.slice(0, 60)) console.log(`  ${String(e.count).padStart(9)} соб. ${String(e.users).padStart(8)} польз.  ${e.name}${INTERESTING.test(e.name) ? '   ←' : ''}`);
+    console.log(`=== События (топ-${top} по числу; ${hostOnly ? 'только ' + host : 'все хосты'}) ===`);
+    for (const e of events.slice(0, top)) console.log(`  ${String(e.count).padStart(9)} соб. ${String(e.users).padStart(8)} польз.  ${e.name}${INTERESTING.test(e.name) ? '   ←' : ''}`);
 
     // 2. Помесячная динамика «интересных» событий
-    const names = events.filter(e => INTERESTING.test(e.name) && !/^(page_view|session_start|first_visit|user_engagement|scroll)$/.test(e.name)).slice(0, 15).map(e => e.name);
+    const names = events.filter(e => INTERESTING.test(e.name) && !/^(page_view|session_start|first_visit|user_engagement|scroll)$/.test(e.name)).slice(0, 25).map(e => e.name);
     if (names.length) {
         const mo = await call(':runReport', {
             dateRanges: [{ startDate: from, endDate: to }],
@@ -62,6 +70,19 @@ async function main() {
         }
         console.log('\n=== Динамика интересных событий по месяцам (месяц:событий) ===');
         for (const [n, arr] of by) console.log(`  ${n}: ${arr.join(' ')}`);
+    }
+
+    // 2b. Хосты, на которых случаются интересные события (личный кабинет и т.п.)
+    if (names.length) {
+        const hs = await call(':runReport', {
+            dateRanges: [{ startDate: from, endDate: to }],
+            dimensions: [{ name: 'hostName' }, { name: 'eventName' }],
+            metrics: [{ name: 'eventCount' }],
+            dimensionFilter: { filter: { fieldName: 'eventName', inListFilter: { values: names } } },
+            orderBys: [{ metric: { metricName: 'eventCount' }, desc: true }], limit: 300
+        });
+        console.log('\n=== Интересные события по хостам (хост — событие — число) ===');
+        for (const r of (hs.rows || []).slice(0, 60)) console.log(`  ${String(r.metricValues[0].value).padStart(8)}  ${r.dimensionValues[0].value}  —  ${r.dimensionValues[1].value}`);
     }
 
     // 3. Метаданные: пользовательские параметры и идентификаторы
