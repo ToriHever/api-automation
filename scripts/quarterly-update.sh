@@ -29,7 +29,9 @@ case "${1:-}" in
     node scripts/traffic-organic-engines.js --site ru
     step "1b. Трафик по страницам входа (GA4; по желанию Метрика: убрать --source ga4)"
     node scripts/traffic-organic-landing.js --source ga4 --from 2025-07
-    step "1c. Состав Google-трафика по сегментам GSC"
+    step "1c. Клиентский путь из GA4 по customer_id (регистрация, оплата, канал первого визита)"
+    node scripts/ga4-customer-journey.js --from 2026-01
+    step "1d. Состав Google-трафика по сегментам GSC"
     node scripts/gsc-segments-monthly.js
     step "3. Сезонные индексы: трафик, поисковики, спрос"
     node scripts/seasonality-index.js --series seo_traffic_ga4 --min-months 6
