@@ -52,11 +52,15 @@ async function runReport(auth, propertyId, body) {
     return rows;
 }
 
-const baseFilter = (events) => [
+// GA4 считает в лимит «9 измерений» и измерения из фильтров: у запроса оплат 8 измерений + eventName = 9, фильтр по хосту не добавляем
+// (purchase приходит с сервера, хост «(not set)», тестовых стендов в нём нет)
+const baseFilter = (events, withHost = true) => [
     { filter: { fieldName: 'eventName', inListFilter: { values: events } } },
     { notExpression: { filter: { fieldName: 'customEvent:customer_id', stringFilter: { matchType: 'EXACT', value: '(not set)' } } } },
-    { notExpression: { filter: { fieldName: 'hostName', stringFilter: { matchType: 'CONTAINS', value: 'web-dev' } } } },
-    { notExpression: { filter: { fieldName: 'hostName', stringFilter: { matchType: 'CONTAINS', value: 'localhost' } } } }
+    ...(withHost ? [
+        { notExpression: { filter: { fieldName: 'hostName', stringFilter: { matchType: 'CONTAINS', value: 'web-dev' } } } },
+        { notExpression: { filter: { fieldName: 'hostName', stringFilter: { matchType: 'CONTAINS', value: 'localhost' } } } }
+    ] : [])
 ];
 
 async function main() {
@@ -87,7 +91,7 @@ async function main() {
                 dimensions: ['date', 'customEvent:customer_id', 'customEvent:transaction_id', 'customEvent:coupon', 'customEvent:currency',
                     'customEvent:value', 'customEvent:payment_type', 'customEvent:period'].map(name => ({ name })),
                 metrics: [{ name: 'eventCount' }],
-                dimensionFilter: { andGroup: { expressions: baseFilter(['purchase']) } }
+                dimensionFilter: { andGroup: { expressions: baseFilter(['purchase'], false) } }
             });
             console.log(`${mo.key}: событий путь ${a.length} строк, оплат ${b.length} строк${dry ? ' (dry-run)' : ''}`);
             if (dry) continue;
