@@ -30,7 +30,8 @@ services/lemmatizer/
 ```
 
 Сам скрипт запуска — `scripts/lemmatize-requests.js` (в корне проекта, как и
-остальные скрипты).
+остальные скрипты). Для CSV-файлов без БД есть отдельный
+`scripts/lemmatize_file.py` — см. раздел «Лемматизация файла без БД».
 
 ## 🔑 Настройка
 
@@ -72,6 +73,36 @@ npm run lemmatize
 Поэтому регулярный перезапуск (например, после каждого импорта нового
 семантического ядра) подхватит только новые запросы, не трогая уже
 обработанные.
+
+## 📄 Лемматизация файла без БД (`scripts/lemmatize_file.py`)
+
+Автономный скрипт: берёт CSV со списком фраз и добавляет колонки с леммами.
+Не использует БД, Flask-сервис и сеть — только `pymorphy3` из venv. Подходит
+для разовых выгрузок (например, запросы из GSC), которые не нужно загружать в
+`common.requests`.
+
+```bash
+# один раз: pandas в venv сервиса (pymorphy3 там уже есть)
+services/lemmatizer/venv/bin/pip install pandas
+
+services/lemmatizer/venv/bin/python scripts/lemmatize_file.py файл.csv
+services/lemmatizer/venv/bin/python scripts/lemmatize_file.py файл.csv --col query   # другое имя колонки
+services/lemmatizer/venv/bin/python scripts/lemmatize_file.py файл.csv --sep ";"      # CSV из русского Excel
+```
+
+- Вход: CSV в UTF-8 с колонкой `request` (имя — через `--col`), разделитель по
+  умолчанию `,` (`--sep`).
+- Выход: `<файл>_lemmas.csv` — исходные колонки плюс:
+  - `lemmas` — фраза в начальных формах: `цены на защиту от ddos` → `цена на защита от ddos`;
+  - `lemma_key` — те же леммы, отсортированные и без повторов; по ней находят
+    дубли с другим порядком или формой слов (`цена защиты ddos` / `защита ddos цены`).
+- Латиница и цифры (`ddos`, `404`, `vds`) остаются как есть.
+- Русский Excel при «CSV UTF-8 (разделитель — запятая)» всё равно ставит `;` —
+  либо запускайте с `--sep ";"`, либо сохраняйте через Google Таблицы.
+- Нужна кодировка UTF-8; для cp1251 пересохраните файл.
+
+Рядом лежит `scripts/cluster_requests_local.py` — локальная кластеризация
+фраз (TF-IDF + KMeans, `pip install scikit-learn pandas`).
 
 ## 🗄️ Структура БД
 
