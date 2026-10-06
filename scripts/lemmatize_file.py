@@ -19,6 +19,7 @@ import pymorphy3
 ap = argparse.ArgumentParser()
 ap.add_argument('csv')
 ap.add_argument('--col', default='request')
+ap.add_argument('--sep', default=',', help='разделитель CSV (для русского Excel: --sep ";")')
 args = ap.parse_args()
 
 if hasattr(sys.stdout, 'reconfigure'):
@@ -40,12 +41,12 @@ def lemmatize(phrase):
     return [lemma(t) for t in TOKEN.findall(str(phrase).lower().replace('ё', 'е'))]
 
 
-df = pd.read_csv(args.csv, encoding='utf-8-sig')
+df = pd.read_csv(args.csv, sep=args.sep, encoding='utf-8-sig')
 lems = df[args.col].map(lemmatize)
 df['lemmas'] = lems.map(' '.join)
 df['lemma_key'] = lems.map(lambda ws: ' '.join(sorted(set(ws))))
 
 out = args.csv.rsplit('.', 1)[0] + '_lemmas.csv'
-df.to_csv(out, index=False, encoding='utf-8-sig')
+df.to_csv(out, index=False, sep=args.sep, encoding='utf-8-sig')
 print(f'Фраз: {len(df)}, уникальных по лемма-ключу: {df.lemma_key.nunique()}')
 print(f'Сохранено: {out}')
