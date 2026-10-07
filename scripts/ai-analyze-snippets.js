@@ -121,7 +121,7 @@ async function analyzeSnippets(db, args, dryRun) {
 
     const client = new YandexAiClient({ modelAlias: args.model });
     const runId = await startRun(db, 'snippets', client.modelName, { limit: args.limit || null, request: args.request || null });
-    let ok = 0, failed = 0, status = 'ok', error = null;
+    let ok = 0, failed = 0, status = 'ok', error = null, consecutiveFailures = 0;
 
     try {
         for (let g = 0; g < groups.length; g++) {
@@ -143,8 +143,12 @@ async function analyzeSnippets(db, args, dryRun) {
             } catch (err) {
                 if (err instanceof BudgetExceededError) throw err;
                 failed += rows.length;
+                consecutiveFailures++;
                 logger.error(`"${request}" не разобран: ${err.message}`);
+                if (consecutiveFailures >= 3) throw new Error('3 запроса подряд с ошибкой — останавливаюсь (проверь ключ, каталог и права)');
+                continue;
             }
+            consecutiveFailures = 0;
             if ((g + 1) % 10 === 0 || g === groups.length - 1) {
                 logger.info(`Запросов ${g + 1}/${groups.length}, документов разобрано ${ok}, ошибок ${failed}, ~${client.usage.costRub.toFixed(2)} ₽`);
             }
@@ -155,6 +159,7 @@ async function analyzeSnippets(db, args, dryRun) {
         logger.error(err.message);
     }
 
+    if (status === 'ok' && ok === 0 && failed > 0) { status = 'failed'; error = 'ни один документ не разобран'; }
     await finishRun(db, runId, { status, client, itemsTotal: docs, itemsOk: ok, itemsFailed: failed, error });
     logger.info(`Разбор сниппетов готов (run ${runId}, ${status}): ${ok} из ${docs}, ~${client.usage.costRub.toFixed(2)} ₽`);
     if (status === 'failed') process.exitCode = 1;
@@ -255,6 +260,7 @@ async function summarizeClusters(db, args, dryRun) {
         logger.error(err.message);
     }
 
+    if (status === 'ok' && ok === 0 && failed > 0) { status = 'failed'; error = 'ни одна сводка не получена'; }
     await finishRun(db, runId, { status, client, itemsTotal: prepared.length, itemsOk: ok, itemsFailed: failed, error });
     logger.info(`Сводки готовы (run ${runId}, ${status}): ${ok} из ${prepared.length}, ~${client.usage.costRub.toFixed(2)} ₽`);
     if (status === 'failed') process.exitCode = 1;

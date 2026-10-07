@@ -90,7 +90,7 @@ async function main() {
 
         const client = new YandexAiClient({ modelAlias: args.model });
         const runId = await startRun(db, 'classify', client.modelName, { limit, force, batchSize });
-        let ok = 0, failed = 0, error = null, status = 'ok';
+        let ok = 0, failed = 0, error = null, status = 'ok', consecutiveFailures = 0;
 
         try {
             for (let b = 0; b < batches.length; b++) {
@@ -115,8 +115,12 @@ async function main() {
                 } catch (err) {
                     if (err instanceof BudgetExceededError) throw err;
                     failed += batch.length;
+                    consecutiveFailures++;
                     logger.error(`Батч ${b + 1}/${batches.length} не размечен: ${err.message}`);
+                    if (consecutiveFailures >= 3) throw new Error('3 батча подряд с ошибкой — останавливаюсь (проверь ключ, каталог и права)');
+                    continue;
                 }
+                consecutiveFailures = 0;
                 logger.info(`Батч ${b + 1}/${batches.length}: размечено ${ok}, ошибок ${failed}, ~${client.usage.costRub.toFixed(2)} ₽`);
             }
         } catch (err) {
@@ -125,6 +129,7 @@ async function main() {
             logger.error(err.message);
         }
 
+        if (status === 'ok' && ok === 0 && failed > 0) { status = 'failed'; error = 'ни одна фраза не размечена'; }
         await finishRun(db, runId, { status, client, itemsTotal: requests.length, itemsOk: ok, itemsFailed: failed, error });
         logger.info(`Готово (run ${runId}, ${status}): ${ok} из ${requests.length}, ~${client.usage.costRub.toFixed(2)} ₽`);
         if (status === 'failed') process.exitCode = 1;

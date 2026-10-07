@@ -56,6 +56,7 @@ async function main() {
         let ok = 0, failed = 0, status = 'ok', error = null;
         let next = 0;
         let stop = false;
+        let consecutiveFailures = 0;
 
         // Небольшой пул воркеров: запросы к API параллельно, запись в БД — по одной (один клиент pg).
         const worker = async () => {
@@ -72,10 +73,12 @@ async function main() {
                         [r.request_id, modelName, vector.length, vector, runId]
                     );
                     ok++;
+                    consecutiveFailures = 0;
                 } catch (err) {
                     if (err instanceof BudgetExceededError) { stop = true; throw err; }
                     failed++;
                     logger.error(`Эмбеддинг "${r.request}" не получен: ${err.message}`);
+                    if (++consecutiveFailures >= 5) { stop = true; throw new Error('5 ошибок подряд — останавливаюсь (проверь ключ, каталог и права)'); }
                 }
                 if ((ok + failed) % 100 === 0) logger.info(`Обработано ${ok + failed} / ${requests.length}, ~${client.usage.costRub.toFixed(2)} ₽`);
             }
@@ -89,6 +92,7 @@ async function main() {
             logger.error(err.message);
         }
 
+        if (status === 'ok' && ok === 0 && failed > 0) { status = 'failed'; error = 'ни один вектор не получен'; }
         await finishRun(db, runId, { status, client, itemsTotal: requests.length, itemsOk: ok, itemsFailed: failed, error });
         logger.info(`Готово (run ${runId}, ${status}): ${ok} векторов, ошибок ${failed}, ~${client.usage.costRub.toFixed(2)} ₽`);
         if (status === 'failed') process.exitCode = 1;
