@@ -1,0 +1,38 @@
+{
+  "name": "AI NLP (Yandex Foundation Models)",
+  "description": "YandexGPT + эмбеддинги поверх семантического ядра и выдачи: классификация, кластеризация, разбор сниппетов",
+  "baseUrl": "https://llm.api.cloud.yandex.net/foundationModels/v1",
+  "timeout": 60000,
+  "retries": 3,
+  "requestDelayMs": 300,
+  "models": {
+    "lite": "yandexgpt-lite",
+    "pro": "yandexgpt"
+  },
+  "defaultModel": "lite",
+  "embeddingModel": "text-search-doc",
+  "pricesRubPer1kTokens": {
+    "yandexgpt-lite": 0.2,
+    "yandexgpt": 1.2,
+    "text-search-doc": 0.01
+  },
+  "maxCostRubPerRun": 150,
+  "classify": {
+    "batchSize": 40
+  },
+  "snippets": {
+    "topN": 10,
+    "maxSnippetChars": 300
+  },
+  "cluster": {
+    "topN": 10,
+    "minSharedUrls": 4,
+    "serpWindowDays": 30,
+    "assignThreshold": 0.82,
+    "labelBatchSize": 8
+  },
+  "ownDomains": [
+    "ddos-guard.ru",
+    "ddos-guard.net"
+  ]
+}
