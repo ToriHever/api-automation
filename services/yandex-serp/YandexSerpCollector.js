@@ -49,13 +49,39 @@ class YandexSerpCollector extends BaseCollector {
     loadKeywords() {
         const filePath = path.join(__dirname, 'keywords', 'target_keywords.txt');
         const raw = fs.readFileSync(filePath, 'utf8');
-        const keywords = raw
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0 && !line.startsWith('#'));
+
+        // onlyGroups в config.json ограничивает сбор указанными группами файла (экономия:
+        // платный метод ~0,485 ₽/запрос). YANDEX_SERP_GROUPS=all — разово собрать все группы.
+        const onlyGroups = process.env.YANDEX_SERP_GROUPS === 'all' ? [] : (this.config.onlyGroups || []);
+        const keywords = YandexSerpCollector.parseKeywords(raw, onlyGroups);
 
         const limit = this.config.maxKeywordsPerRun || 100;
         return keywords.slice(0, limit);
+    }
+
+    /**
+     * Разбор файла запросов. Строки "# Группа: <имя>" открывают группу; onlyGroups (пустой
+     * массив = все группы) сравнивается с именем группы по началу строки, без учёта регистра:
+     * "Главная" подходит и к "# Группа: Главная", и к "# Группа: Главная (расширение)".
+     */
+    static parseKeywords(raw, onlyGroups = []) {
+        const wanted = onlyGroups.map(g => g.toLowerCase());
+        const keywords = [];
+        let currentGroup = '';
+
+        for (const rawLine of raw.split('\n')) {
+            const line = rawLine.trim();
+            if (line.length === 0) continue;
+            if (line.startsWith('#')) {
+                const m = line.match(/^#\s*Группа:\s*(.+)$/i);
+                if (m) currentGroup = m[1].trim().toLowerCase();
+                continue;
+            }
+            if (wanted.length === 0 || wanted.some(g => currentGroup.startsWith(g))) {
+                keywords.push(line);
+            }
+        }
+        return keywords;
     }
 
     /**

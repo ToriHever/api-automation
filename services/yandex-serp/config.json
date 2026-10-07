@@ -5,6 +5,7 @@
   "retries": 3,
   "delayBetweenRequests": 3000,
   "maxKeywordsPerRun": 250,
+  "onlyGroups": ["Главная"],
   "resultsPerQuery": 20,
   "searchType": "SEARCH_TYPE_RU",
   "l10n": "LOCALIZATION_RU",
