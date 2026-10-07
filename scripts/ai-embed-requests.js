@@ -6,7 +6,8 @@
 // Запуск:
 //   node scripts/ai-embed-requests.js --dry-run
 //   node scripts/ai-embed-requests.js --limit 500
-//   node scripts/ai-embed-requests.js --only-serp     # только запросы, которые есть в yandex.serp_results
+//   node scripts/ai-embed-requests.js --scope serp    # только запросы из yandex.serp_results (tracked — по умолчанию, all — всё ядро)
+//   node scripts/ai-embed-requests.js --min-impressions 100   # + запросы GSC с ≥100 показов за 90 дней
 //
 // Идемпотентно: пропускает запросы, у которых уже есть вектор этой модели.
 
@@ -14,7 +15,7 @@ require('dotenv').config();
 const DatabaseManager = require('../core/DatabaseManager');
 const Logger = require('../core/Logger');
 const { YandexAiClient, BudgetExceededError, estimateTokens, estimateCostRub, config } = require('../services/ai-nlp/YandexAiClient');
-const { parseArgs, applySchema, startRun, finishRun } = require('../services/ai-nlp/lib');
+const { parseArgs, scopeClause, applySchema, startRun, finishRun } = require('../services/ai-nlp/lib');
 
 const logger = new Logger('ai-nlp');
 const CONCURRENCY = 4;
@@ -36,7 +37,7 @@ async function main() {
                FROM common.requests r
                LEFT JOIN ai.request_embeddings e ON e.request_id = r.request_id AND e.model = $1
               WHERE e.request_id IS NULL
-                ${args['only-serp'] ? 'AND r.request IN (SELECT DISTINCT request FROM yandex.serp_results)' : ''}
+                ${scopeClause(args)}
               ORDER BY r.request_id
               ${limit ? `LIMIT ${limit}` : ''}`,
             [modelName]
@@ -51,7 +52,7 @@ async function main() {
         }
 
         const client = new YandexAiClient();
-        const runId = await startRun(db, 'embed', modelName, { limit, onlySerp: !!args['only-serp'] });
+        const runId = await startRun(db, 'embed', modelName, { limit, scope: args.scope || 'tracked', minImpressions: args['min-impressions'] || null });
         let ok = 0, failed = 0, status = 'ok', error = null;
         let next = 0;
         let stop = false;

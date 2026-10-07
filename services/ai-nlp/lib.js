@@ -27,6 +27,34 @@ function parseArgs(argv = process.argv.slice(2)) {
     return args;
 }
 
+/**
+ * Охват запросов для классификации/эмбеддингов (SQL-фрагмент для WHERE, алиас таблицы — r).
+ *   --scope tracked (по умолчанию) — выдача yandex.serp_results + активные wordstat.check_list;
+ *                                    с --min-impressions N добавляются запросы GSC за 90 дней с ≥ N показов
+ *   --scope serp                   — только запросы из yandex.serp_results
+ *   --scope all                    — все common.requests (дорого: десятки тысяч фраз)
+ */
+function scopeClause(args) {
+    const scope = args['only-serp'] ? 'serp' : (args.scope || 'tracked');
+    const serp = `r.request IN (SELECT DISTINCT request FROM yandex.serp_results)`;
+    if (scope === 'all') return '';
+    if (scope === 'serp') return `AND ${serp}`;
+    if (scope !== 'tracked') throw new Error(`Неизвестный --scope "${scope}" (tracked | serp | all)`);
+
+    const parts = [
+        serp,
+        `r.request_id IN (SELECT request_id FROM wordstat.check_list WHERE is_active)`
+    ];
+    const minImpr = parseInt(args['min-impressions'], 10);
+    if (Number.isFinite(minImpr) && minImpr > 0) {
+        parts.push(`r.request IN (
+            SELECT request FROM gsc.search_console
+             WHERE event_date >= CURRENT_DATE - 90
+             GROUP BY request HAVING SUM(impressions) >= ${minImpr})`);
+    }
+    return `AND (${parts.join(' OR ')})`;
+}
+
 async function applySchema(db) {
     await db.query(fs.readFileSync(SCHEMA_FILE, 'utf8'));
 }
@@ -142,6 +170,6 @@ function nearestCentroid(vector, centroids, threshold) {
 }
 
 module.exports = {
-    parseArgs, applySchema, startRun, finishRun,
+    parseArgs, scopeClause, applySchema, startRun, finishRun,
     normalizeUrl, clusterBySerp, cosine, centroid, nearestCentroid
 };

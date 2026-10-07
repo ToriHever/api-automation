@@ -7,6 +7,8 @@
 //   node scripts/ai-classify-requests.js --limit 200        # первые 200 неразмеченных
 //   node scripts/ai-classify-requests.js --model pro        # модель yandexgpt вместо lite
 //   node scripts/ai-classify-requests.js --force            # перезаписать уже размеченные
+//   node scripts/ai-classify-requests.js --scope serp       # только фразы из выдачи (tracked — по умолчанию, all — всё ядро)
+//   node scripts/ai-classify-requests.js --min-impressions 100   # + запросы GSC с ≥100 показов за 90 дней
 //
 // Идемпотентно: по умолчанию берёт только запросы без строки в ai.request_intent.
 
@@ -14,7 +16,7 @@ require('dotenv').config();
 const DatabaseManager = require('../core/DatabaseManager');
 const Logger = require('../core/Logger');
 const { YandexAiClient, BudgetExceededError, estimateTokens, estimateCostRub, config } = require('../services/ai-nlp/YandexAiClient');
-const { parseArgs, applySchema, startRun, finishRun } = require('../services/ai-nlp/lib');
+const { parseArgs, scopeClause, applySchema, startRun, finishRun } = require('../services/ai-nlp/lib');
 
 const logger = new Logger('ai-nlp');
 
@@ -64,7 +66,10 @@ async function main() {
         const { rows: requests } = await db.query(
             `SELECT r.request_id, r.request
                FROM common.requests r
-               ${force ? '' : 'LEFT JOIN ai.request_intent ri ON ri.request_id = r.request_id WHERE ri.request_id IS NULL'}
+               LEFT JOIN ai.request_intent ri ON ri.request_id = r.request_id
+              WHERE 1 = 1
+                ${force ? '' : 'AND ri.request_id IS NULL'}
+                ${scopeClause(args)}
               ORDER BY r.request_id
               ${limit ? `LIMIT ${limit}` : ''}`
         );

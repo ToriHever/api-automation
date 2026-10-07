@@ -34,6 +34,11 @@ YANDEX_AI_FOLDER_ID=...    # необязательно: по умолчанию
 4. `npm run ai:snippets -- --dry-run` → `npm run ai:snippets`, затем
    `npm run ai:snippets -- --summaries` (сводки нужны кластеры и разбор сниппетов).
 
+**Охват (`--scope`)** для классификации и эмбеддингов: в `common.requests` десятки тысяч фраз,
+размечать всё дорого и не нужно. По умолчанию `tracked` — фразы из `yandex.serp_results` и активные
+в `wordstat.check_list`; `--min-impressions N` добавляет запросы GSC за 90 дней с ≥ N показов;
+`--scope serp` — только выдача; `--scope all` — всё ядро (смотри `--dry-run`!).
+
 Общие флаги: `--dry-run` (оценка стоимости, API не вызывается), `--limit N`,
 `--model pro` (YandexGPT Pro вместо Lite). Все скрипты идемпотентны — повторный
 запуск обрабатывает только то, чего ещё нет (`--force` у классификации перезаписывает).
