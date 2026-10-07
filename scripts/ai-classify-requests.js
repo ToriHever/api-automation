@@ -26,11 +26,19 @@ const STAGES = ['awareness', 'consideration', 'purchase'];
 
 const SYSTEM_PROMPT = `Ты SEO-аналитик российской компании DDoS-Guard (сайт ddos-guard.ru): защита от DDoS-атак, WAF и защита сайтов (L7), защита сетей (L3-L4), CDN, хостинг и VDS/VPS с защитой, выделенные серверы, dCAPTCHA.
 Тебе дают пронумерованные поисковые запросы. Для каждого определи:
-- intent: commercial (хочет купить, заказать, узнать цену, подобрать услугу), informational (что такое, как, почему, обучение, термины), brand (запрос про DDoS-Guard / ddos-guard), competitor_brand (бренд конкурента: Cloudflare, Qrator, StormWall, Selectel и т.п.), navigational (ищет конкретный сайт/сервис, не нашего бренда), junk (не относится к теме безопасности, хостинга, серверов, сетей).
-- product: ddos_protection, waf_l7, network_l3_l4, cdn, hosting, vds, dedicated, captcha, cloudflare_alt, dns, other, none (none — если продукта нет, например общий термин).
-- stage: awareness (узнаёт о проблеме), consideration (сравнивает решения), purchase (готов купить).
-- conf: уверенность от 0 до 1.
-Ответь ТОЛЬКО JSON-массивом без пояснений: [{"i":1,"intent":"...","product":"...","stage":"...","conf":0.9}, ...]. По одному объекту на каждый запрос.`;
+- intent:
+  commercial — человек ищет услугу или хочет её получить: "защита от ddos", "ddos защита сайта", "антиддос", "хостинг с защитой", "купить", "заказать", "цена", "сервис", "компания". Общие названия услуги без вопросительных слов — это commercial.
+  informational — вопрос или обучение: "что такое", "как", "почему", "зачем", "способы", "методы", термины и определения.
+  brand — запрос именно про DDoS-Guard (ddos-guard, ддос гард). Слова "антиддос", "anti ddos" — НЕ бренд, это общее название услуги.
+  competitor_brand — бренд конкурента: Cloudflare, Qrator, StormWall, Selectel и т.п.
+  navigational — ищет конкретный чужой сайт или сервис.
+  junk — не относится к безопасности, хостингу, серверам, сетям.
+- product: ddos_protection, waf_l7, network_l3_l4, cdn, hosting, vds, dedicated, captcha, cloudflare_alt, dns, other, none (none — продукта нет, например общий термин).
+- stage:
+  purchase — есть "купить", "заказать", "цена", "стоимость", "тариф", "аренда";
+  consideration — выбирает исполнителя: "сервис", "компания", "лучшие", "рейтинг", "сравнение", "аналог", "российский";
+  awareness — остальное: изучает тему, общие и информационные запросы.
+Ответь ТОЛЬКО JSON-массивом без пояснений: [{"i":1,"intent":"...","product":"...","stage":"..."}, ...]. По одному объекту на каждый запрос.`;
 
 function buildUserPrompt(batch) {
     return batch.map((r, idx) => `${idx + 1}. ${r.request}`).join('\n');
