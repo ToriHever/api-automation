@@ -164,7 +164,7 @@ LIMIT 30;
 -- ============================================================
 WITH base AS (
     SELECT sc.request,
-           6 + ((EXTRACT(year FROM sc.event_date) * 12 + EXTRACT(month FROM sc.event_date))
+           7 + ((EXTRACT(year FROM sc.event_date) * 12 + EXTRACT(month FROM sc.event_date))
               - (EXTRACT(year FROM CURRENT_DATE) * 12 + EXTRACT(month FROM CURRENT_DATE)))::int AS m,
            sc.clicks, sc.impressions
     FROM gsc.search_console sc
@@ -195,7 +195,7 @@ LIMIT 100;
 -- ============================================================
 WITH base AS (
     SELECT rtrim(lower(sm.url), '/') AS url,
-           6 + ((EXTRACT(year FROM sc.event_date) * 12 + EXTRACT(month FROM sc.event_date))
+           7 + ((EXTRACT(year FROM sc.event_date) * 12 + EXTRACT(month FROM sc.event_date))
               - (EXTRACT(year FROM CURRENT_DATE) * 12 + EXTRACT(month FROM CURRENT_DATE)))::int AS m,
            sc.clicks, sc.impressions
     FROM gsc.search_console sc
