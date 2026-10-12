@@ -156,3 +156,66 @@ FROM base
 GROUP BY url, request
 ORDER BY COALESCE(SUM(clicks) FILTER (WHERE win = 'B'), 0) - COALESCE(SUM(clicks) FILTER (WHERE win = 'A'), 0) ASC
 LIMIT 30;
+
+-- ============================================================
+-- Q5. Запросы с «дырой» по месяцам: за 6 полных календарных месяцев (до текущего) есть клики,
+--     но в каких-то месяцах показов нет совсем. m1 = самый старый месяц, m6 = последний полный.
+--     months_present < 6 = в остальных месяцах строк нет. Порог: >= 10 кликов за 6 мес.
+-- ============================================================
+WITH base AS (
+    SELECT sc.request,
+           6 + ((EXTRACT(year FROM sc.event_date) * 12 + EXTRACT(month FROM sc.event_date))
+              - (EXTRACT(year FROM CURRENT_DATE) * 12 + EXTRACT(month FROM CURRENT_DATE)))::int AS m,
+           sc.clicks, sc.impressions
+    FROM gsc.search_console sc
+    JOIN common.site_map sm ON sm.id = sc.target_url
+    WHERE sm.url ILIKE 'https://ddos-guard.ru%'
+      AND sc.event_date >= date_trunc('month', CURRENT_DATE) - INTERVAL '6 months'
+      AND sc.event_date <  date_trunc('month', CURRENT_DATE)
+)
+SELECT request,
+       EXISTS (SELECT 1 FROM common.brand_keywords bk WHERE base.request ILIKE '%' || bk.keyword || '%') AS is_brand,
+       COUNT(DISTINCT m) FILTER (WHERE impressions > 0) AS months_present,
+       SUM(clicks) AS clicks_total,
+       COALESCE(SUM(clicks) FILTER (WHERE m = 1), 0) AS c_m1, COALESCE(SUM(clicks) FILTER (WHERE m = 2), 0) AS c_m2,
+       COALESCE(SUM(clicks) FILTER (WHERE m = 3), 0) AS c_m3, COALESCE(SUM(clicks) FILTER (WHERE m = 4), 0) AS c_m4,
+       COALESCE(SUM(clicks) FILTER (WHERE m = 5), 0) AS c_m5, COALESCE(SUM(clicks) FILTER (WHERE m = 6), 0) AS c_m6,
+       COALESCE(SUM(impressions) FILTER (WHERE m = 1), 0) AS i_m1, COALESCE(SUM(impressions) FILTER (WHERE m = 2), 0) AS i_m2,
+       COALESCE(SUM(impressions) FILTER (WHERE m = 3), 0) AS i_m3, COALESCE(SUM(impressions) FILTER (WHERE m = 4), 0) AS i_m4,
+       COALESCE(SUM(impressions) FILTER (WHERE m = 5), 0) AS i_m5, COALESCE(SUM(impressions) FILTER (WHERE m = 6), 0) AS i_m6
+FROM base
+GROUP BY request
+HAVING SUM(clicks) >= 10
+   AND COUNT(DISTINCT m) FILTER (WHERE impressions > 0) < 6
+ORDER BY SUM(clicks) DESC
+LIMIT 100;
+
+-- ============================================================
+-- Q6. То же для страниц: URL, у которых в каком-то из 6 месяцев показов нет совсем.
+-- ============================================================
+WITH base AS (
+    SELECT rtrim(lower(sm.url), '/') AS url,
+           6 + ((EXTRACT(year FROM sc.event_date) * 12 + EXTRACT(month FROM sc.event_date))
+              - (EXTRACT(year FROM CURRENT_DATE) * 12 + EXTRACT(month FROM CURRENT_DATE)))::int AS m,
+           sc.clicks, sc.impressions
+    FROM gsc.search_console sc
+    JOIN common.site_map sm ON sm.id = sc.target_url
+    WHERE sm.url ILIKE 'https://ddos-guard.ru%'
+      AND sc.event_date >= date_trunc('month', CURRENT_DATE) - INTERVAL '6 months'
+      AND sc.event_date <  date_trunc('month', CURRENT_DATE)
+)
+SELECT url,
+       COUNT(DISTINCT m) FILTER (WHERE impressions > 0) AS months_present,
+       SUM(clicks) AS clicks_total,
+       COALESCE(SUM(clicks) FILTER (WHERE m = 1), 0) AS c_m1, COALESCE(SUM(clicks) FILTER (WHERE m = 2), 0) AS c_m2,
+       COALESCE(SUM(clicks) FILTER (WHERE m = 3), 0) AS c_m3, COALESCE(SUM(clicks) FILTER (WHERE m = 4), 0) AS c_m4,
+       COALESCE(SUM(clicks) FILTER (WHERE m = 5), 0) AS c_m5, COALESCE(SUM(clicks) FILTER (WHERE m = 6), 0) AS c_m6,
+       COALESCE(SUM(impressions) FILTER (WHERE m = 1), 0) AS i_m1, COALESCE(SUM(impressions) FILTER (WHERE m = 2), 0) AS i_m2,
+       COALESCE(SUM(impressions) FILTER (WHERE m = 3), 0) AS i_m3, COALESCE(SUM(impressions) FILTER (WHERE m = 4), 0) AS i_m4,
+       COALESCE(SUM(impressions) FILTER (WHERE m = 5), 0) AS i_m5, COALESCE(SUM(impressions) FILTER (WHERE m = 6), 0) AS i_m6
+FROM base
+GROUP BY url
+HAVING SUM(clicks) >= 10
+   AND COUNT(DISTINCT m) FILTER (WHERE impressions > 0) < 6
+ORDER BY SUM(clicks) DESC
+LIMIT 100;
