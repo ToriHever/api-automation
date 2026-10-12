@@ -48,6 +48,11 @@ async function getCategories() {
     return result.rows;
 }
 
+// Пользовательский текст (заголовки вроде "<a>") ломает parse_mode=HTML — Telegram отвечает 400
+function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 async function sendMessage(chatId, text, replyMarkup) {
     await axios.post(`${API}/sendMessage`, {
         chat_id: chatId,
@@ -79,7 +84,7 @@ async function handleCategoryChoice(chatId, categoryId, categoryName, callbackQu
     await answerCallback(callbackQueryId);
     await sendMessage(
         chatId,
-        `Категория: <b>${categoryName}</b>\n\nТеперь пришлите заметки в формате:\n` +
+        `Категория: <b>${escapeHtml(categoryName)}</b>\n\nТеперь пришлите заметки в формате:\n` +
         `<code>ГГГГ-ММ-ДД | Заголовок | Описание</code>\n` +
         `Можно несколько заметок сразу — каждая с новой строки (описание можно не указывать)`
     );
@@ -119,7 +124,7 @@ async function handleNoteText(chatId, text) {
     for (let i = 0; i < lines.length; i++) {
         const parsed = parseNoteLine(lines[i]);
         if (parsed.error) {
-            errors.push(`Строка ${i + 1}: ${parsed.error}`);
+            errors.push(`Строка ${i + 1}: ${escapeHtml(parsed.error)}`);
             continue;
         }
 
@@ -128,12 +133,12 @@ async function handleNoteText(chatId, text) {
              VALUES ($1, $2, $3, $4, $5)`,
             [parsed.title, parsed.description, parsed.dateStr, state.categoryId, String(chatId)]
         );
-        inserted.push(`${parsed.title} (${parsed.dateStr})`);
+        inserted.push(`${escapeHtml(parsed.title)} (${parsed.dateStr})`);
     }
 
     pending.delete(chatId);
 
-    let response = `✅ Добавлено заметок: ${inserted.length} (категория: ${state.categoryName})`;
+    let response = `✅ Добавлено заметок: ${inserted.length} (категория: ${escapeHtml(state.categoryName)})`;
     if (inserted.length > 0) {
         response += `\n${inserted.map(t => `• ${t}`).join('\n')}`;
     }
