@@ -75,6 +75,14 @@
     "description": "Google Alerts (RSS) → common.google_alerts (сырые упоминания) + common.notes (лента событий Telegram-бота, категория 'Google Alerts'). Бесплатно (публичные RSS-фиды), почасовой сбор. Требует GOOGLE_ALERTS_FEEDS в .env (алерты создаются на google.com/alerts с доставкой 'RSS-канал'). Своя cron-строка, см. services/google-alerts/README.md.",
     "env_prefix": "GOOGLE_ALERTS_"
   },
+  "google-updates": {
+    "enabled": false,
+    "schedule": "0 7 * * *",
+    "timeout": 60000,
+    "retries": 2,
+    "description": "Апдейты алгоритмов Google (Search Status Dashboard, incidents.json) → common.google_updates + common.notes (категория 'Google Updates': начало и завершение раскатки). Бесплатно, без ключа. Своя cron-строка раз в сутки, см. services/google-updates/README.md.",
+    "env_prefix": "GOOGLE_UPDATES_"
+  },
   "domains-meta": {
     "enabled": false,
     "priority": 8,

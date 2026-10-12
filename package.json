@@ -16,6 +16,7 @@
     "collect:yandex-metrika": "node scripts/run-service.js yandex-metrika",
     "collect:yandex-serp": "node scripts/run-service.js yandex-serp",
     "collect:google-alerts": "node scripts/run-service.js google-alerts",
+    "collect:google-updates": "node scripts/run-service.js google-updates",
     "collect:domains-meta": "node scripts/run-service.js domains-meta",
     "collect:checkhost": "node scripts/run-service.js checkhost",
     "notes-bot": "node scripts/notes-bot.js",

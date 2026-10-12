@@ -1,0 +1,7 @@
+{
+  "name": "Google Updates",
+  "description": "Апдейты алгоритмов Google из Search Status Dashboard",
+  "feed_url": "https://status.search.google.com/incidents.json",
+  "services": ["Ranking"],
+  "timezone": "Europe/Moscow"
+}

@@ -14,6 +14,7 @@ async function getCollector(serviceName) {
         'yandex-metrika': () => require('../services/yandex-metrika/YandexMetrikaCollector'),
         'yandex-serp': () => require('../services/yandex-serp/YandexSerpCollector'),
         'google-alerts': () => require('../services/google-alerts/GoogleAlertsCollector'),
+        'google-updates': () => require('../services/google-updates/GoogleUpdatesCollector'),
         'domains-meta': () => require('../services/domains-meta/DomainsMetaCollector'),
         'checkhost': () => require('../services/checkhost/CheckHostCollector')
     };
