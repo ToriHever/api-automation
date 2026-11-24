@@ -1,0 +1,56 @@
+name: Database documentation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  db-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      PUPPETEER_SKIP_DOWNLOAD: "true"
+      PGHOST: localhost
+      PGUSER: db_docs
+      PGPASSWORD: db_docs
+      PGDATABASE: db_docs_admin
+      PGPORT: 5432
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: db_docs
+          POSTGRES_PASSWORD: db_docs
+          POSTGRES_DB: db_docs_admin
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U db_docs -d db_docs_admin"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run documentation unit tests
+        run: npm run test:db-docs
+
+      - name: Rebuild schema and verify documentation
+        run: npm run docs:db:rebuild

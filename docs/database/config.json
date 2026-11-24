@@ -1,0 +1,408 @@
+{
+  "version": 2,
+  "source": {
+    "kind": "postgresql-catalog",
+    "readOnly": true,
+    "includeDatabaseComments": false
+  },
+  "newObjects": "deny",
+  "scope": {
+    "tables": [
+      "ai.cluster_competitor_summary",
+      "ai.cluster_members",
+      "ai.clusters",
+      "ai.request_embeddings",
+      "ai.request_intent",
+      "ai.runs",
+      "ai.snippet_analysis",
+      "analytics.gsc_period_comparison",
+      "common.brand_keywords",
+      "common.clusters",
+      "common.clusters_topvisor",
+      "common.dim_projects_engines",
+      "common.google_alerts",
+      "common.google_updates",
+      "common.hubs",
+      "common.notes",
+      "common.notes_categories",
+      "common.request_groups",
+      "common.request_urls",
+      "common.request_words",
+      "common.requests",
+      "common.requests_words",
+      "common.site_map",
+      "common.topics",
+      "common.type_request",
+      "common.wordstat_phrases",
+      "ga4.web_vitals",
+      "gsc.page_totals_by_period",
+      "gsc.search_console",
+      "gsc.top_queries_by_page",
+      "l7.checkhost_scan",
+      "l7.clients",
+      "l7.domains_meta_scan",
+      "public.jira_issue_links",
+      "public.jira_issues",
+      "public.seo_quarterly_gsc",
+      "reports.demand_phrases",
+      "reports.ga4_customer_events",
+      "reports.ga4_customer_purchases",
+      "reports.gsc_segment_monthly",
+      "reports.purchases_kpi",
+      "reports.purchases_monthly",
+      "reports.purchases_overall_monthly",
+      "reports.seasonality_events",
+      "reports.seasonality_index",
+      "reports.seasonality_monthly",
+      "reports.seo_traffic_norm",
+      "reports.traffic_daily",
+      "reports.traffic_organic_engine",
+      "reports.traffic_organic_landing",
+      "topvisor.dim_groups",
+      "topvisor.dim_keywords",
+      "topvisor.dim_project_regions",
+      "topvisor.dim_projects",
+      "topvisor.dim_searchers",
+      "topvisor.positions",
+      "wordstat.check_list",
+      "wordstat.collection_queue",
+      "wordstat.dynamics_range",
+      "wordstat.dynamics_range_daily",
+      "wordstat.dynamics_range_daily_queue",
+      "wordstat.dynamics_range_queue",
+      "wordstat.top_requests",
+      "yandex.serp_results"
+    ],
+    "views": [
+      "ai.v_competitor_offers",
+      "ai.v_request_classified",
+      "ai.v_request_clusters",
+      "analytics.topvisor_group_kpi_monthly",
+      "analytics.topvisor_group_kpi_period",
+      "analytics.topvisor_relevance_visibility",
+      "analytics.v_ga4_web_vitals_daily",
+      "analytics.v_gsc_longtail_requests",
+      "analytics.v_gsc_monthly",
+      "analytics.v_gsc_requests_agg",
+      "analytics.v_gsc_requests_daily",
+      "analytics.v_gsc_requests_kpi",
+      "analytics.v_gsc_requests_kpi_brand",
+      "analytics.v_gsc_yearly",
+      "analytics.v_serp_results",
+      "analytics.v_topvisor_group_target_urls",
+      "analytics.v_topvisor_keyword_cluster_map",
+      "common.v_cluster_groups",
+      "common.v_notes",
+      "common.v_request_groups",
+      "common.v_requests_lemmatized",
+      "gsc.top3_queries_ctr",
+      "reports.v_demand_index_monthly",
+      "reports.v_demand_index_yoy",
+      "reports.v_demand_product_monthly",
+      "reports.v_demand_yoy",
+      "reports.v_ga4_customer_journey",
+      "reports.v_ga4_months_complete",
+      "reports.v_ga4_registration_funnel_monthly",
+      "reports.v_gsc_segment_share",
+      "reports.v_landing_page_group",
+      "reports.v_organic_engine_monthly",
+      "reports.v_purchases_vs_traffic_quarterly",
+      "reports.v_seo_norm_latest",
+      "reports.v_seo_norm_report",
+      "reports.v_traffic_landing_group_monthly",
+      "reports.v_traffic_vs_payers_site_quarterly",
+      "topvisor.positions_summary",
+      "topvisor.positions_top_stats",
+      "topvisor.positions_with_delta",
+      "wordstat.dynamics_range_daily_view",
+      "wordstat.dynamics_range_view",
+      "wordstat.dynamics_summary",
+      "wordstat.dynamics_with_change",
+      "wordstat.monthly_trends",
+      "wordstat.v_check_list_summary",
+      "yandex.serp_results_dynamics"
+    ],
+    "excludedTables": [
+      "common.check_keywords_backup_20260930",
+      "common.clusters_topvisor_backup_20260923",
+      "common.dim_projects_engines_backup_20260923",
+      "common.dim_projects_engines_backup_20260923b",
+      "common.requests_category_legacy",
+      "common.requests_deleted_backup_20260930",
+      "common.requests_hub_legacy",
+      "common.temporary_table_backup_20260930",
+      "topvisor.dim_keywords_backup_20260923",
+      "topvisor.dim_projects_backup_20260923",
+      "wordstat.tmp_dynamics"
+    ]
+  },
+  "tableMetadata": {
+    "includeColumnOrder": true,
+    "includeColumnTypes": true,
+    "includeNullability": true,
+    "includeIdentityGenerated": true,
+    "includeDefaults": "reviewed-only",
+    "includePrimaryKeys": true,
+    "includeForeignKeys": true,
+    "includeForeignKeyActions": true,
+    "includeUniqueConstraints": true,
+    "includeIndexes": "summary-only"
+  },
+  "views": {
+    "mode": "external-structure-only",
+    "includeColumns": true,
+    "includeColumnTypes": true,
+    "includeDependencies": true,
+    "includeDefinitions": false,
+    "includeDatabaseComments": false
+  },
+  "materializedViews": {
+    "mode": "exclude-all"
+  },
+  "functions": {
+    "mode": "exclude-all",
+    "includeSignatures": false,
+    "includeSource": false,
+    "includeAdministrativeFunctions": false
+  },
+  "expressions": {
+    "defaults": "review-required",
+    "checks": "presence-only",
+    "partialIndexes": "presence-only",
+    "indexExpressions": "presence-only",
+    "unreviewed": "presence-only"
+  },
+  "restrictedObjects": {
+    "reports.ga4_customer_events": {
+      "mode": "structure-only",
+      "allowExamples": false,
+      "allowValues": false,
+      "valueRestrictedColumns": [
+        "customer_id",
+        "first_channel",
+        "first_source",
+        "first_medium",
+        "first_campaign"
+      ]
+    },
+    "reports.ga4_customer_purchases": {
+      "mode": "structure-only",
+      "allowExamples": false,
+      "allowValues": false,
+      "valueRestrictedColumns": [
+        "customer_id",
+        "transaction_id",
+        "coupon",
+        "value",
+        "currency",
+        "payment_type",
+        "period"
+      ]
+    },
+    "reports.v_ga4_customer_journey": {
+      "mode": "structure-only",
+      "allowExamples": false,
+      "allowValues": false,
+      "valueRestrictedColumns": [
+        "customer_id",
+        "first_channel",
+        "first_source",
+        "first_medium"
+      ]
+    },
+    "common.notes": {
+      "mode": "structure-only",
+      "allowExamples": false,
+      "allowValues": false,
+      "valueRestrictedColumns": [
+        "created_by"
+      ]
+    },
+    "common.requests": {
+      "mode": "structure-only",
+      "allowExamples": false,
+      "allowValues": false,
+      "prohibitedContent": [
+        "real-search-phrases"
+      ]
+    },
+    "l7.clients": {
+      "mode": "structure-only",
+      "allowExamples": false,
+      "allowValues": false,
+      "valueRestrictedColumns": [
+        "id",
+        "domain",
+        "clean_domain"
+      ]
+    },
+    "l7.checkhost_scan": {
+      "mode": "structure-only",
+      "allowExamples": false,
+      "allowValues": false,
+      "valueRestrictedColumns": [
+        "client_id",
+        "domain",
+        "request_id",
+        "resolved_ips",
+        "ip",
+        "country",
+        "region",
+        "city",
+        "isp",
+        "org",
+        "as_number",
+        "as_name"
+      ]
+    },
+    "l7.domains_meta_scan": {
+      "mode": "structure-only",
+      "allowExamples": false,
+      "allowValues": false,
+      "valueRestrictedColumns": [
+        "client_id",
+        "domain",
+        "final_url",
+        "title",
+        "description",
+        "keywords",
+        "h1",
+        "og_title",
+        "og_image",
+        "canonical",
+        "robots"
+      ]
+    },
+    "ai.runs": {
+      "mode": "structure-only",
+      "allowExamples": false,
+      "allowValues": false,
+      "valueRestrictedColumns": [
+        "params",
+        "items_total",
+        "items_ok",
+        "items_failed",
+        "input_tokens",
+        "output_tokens",
+        "est_cost_rub",
+        "error"
+      ]
+    }
+  },
+  "restrictedPatterns": {
+    "gsc.*": {
+      "mode": "structure-only",
+      "allowExamples": false,
+      "allowValues": false,
+      "prohibitedContent": [
+        "real-search-phrases"
+      ]
+    },
+    "wordstat.*": {
+      "mode": "structure-only",
+      "allowExamples": false,
+      "allowValues": false,
+      "prohibitedContent": [
+        "real-search-phrases"
+      ]
+    }
+  },
+  "relations": {
+    "physical": "publish",
+    "logical": "manual-only",
+    "logicalLabel": "Логическая связь, не ограничение БД",
+    "manual": []
+  },
+  "descriptions": {
+    "file": "docs/database/public-descriptions.json",
+    "missingTableDescription": "warn",
+    "missingColumnDescription": "allow",
+    "missingViewDescription": "warn"
+  },
+  "output": {
+    "directory": "docs/database/generated",
+    "indexFile": "index.md",
+    "relationsFile": "relations.md",
+    "domains": [
+      {
+        "file": "common.md",
+        "title": "Общие справочники и семантическое ядро",
+        "schemas": [
+          "common"
+        ]
+      },
+      {
+        "file": "topvisor.md",
+        "title": "TopVisor",
+        "schemas": [
+          "topvisor"
+        ]
+      },
+      {
+        "file": "gsc.md",
+        "title": "Google Search Console",
+        "schemas": [
+          "gsc"
+        ]
+      },
+      {
+        "file": "wordstat.md",
+        "title": "Wordstat",
+        "schemas": [
+          "wordstat"
+        ]
+      },
+      {
+        "file": "reports.md",
+        "title": "Отчётные таблицы",
+        "schemas": [
+          "reports"
+        ]
+      },
+      {
+        "file": "analytics.md",
+        "title": "Аналитические объекты",
+        "schemas": [
+          "analytics"
+        ]
+      },
+      {
+        "file": "ai.md",
+        "title": "AI и NLP",
+        "schemas": [
+          "ai"
+        ]
+      },
+      {
+        "file": "integrations.md",
+        "title": "Интеграции и внешние данные",
+        "schemas": [
+          "ga4",
+          "l7",
+          "yandex"
+        ]
+      },
+      {
+        "file": "public.md",
+        "title": "Разрешённые таблицы схемы public",
+        "schemas": [
+          "public"
+        ]
+      }
+    ]
+  },
+  "safety": {
+    "includeOwners": false,
+    "includePrivileges": false,
+    "includeViewDefinitions": false,
+    "includeRowCounts": false,
+    "includeSampleData": false,
+    "includeConnectionParameters": false,
+    "includeServerVersion": false,
+    "includeFullDump": false,
+    "includeStatistics": false,
+    "includeTableSizes": false,
+    "includePolicies": false,
+    "includeFunctionDefinitions": false
+  }
+}
